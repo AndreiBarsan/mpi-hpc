@@ -2,6 +2,7 @@
 #include <sstream>
 #include <vector>
 #include <cmath>
+#include <numeric>
 
 #include "mpi.h"
 
