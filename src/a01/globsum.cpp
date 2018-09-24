@@ -1,44 +1,109 @@
 #include <iostream>
 #include <sstream>
+#include <vector>
+#include <cmath>
 
 #include "mpi.h"
 
-#define MPI_CHECK(exp) mpi_safe_call(exp, __FILE__, __LINE__)
-
 // TODO(andreib): use gflags!
-
 static const int NO_TAG = 0;
+static const unsigned int RANDOM_SEED = 1234;
 
-int mpi_safe_call(int ret_code, const std::string &fname, int line) {
-  if (MPI_SUCCESS == ret_code) {
-    return ret_code;
+// A little bit of template hacking..er.. magic to tame MPI!
+template<typename T>
+MPI_Datatype MPIType();
+
+template<>
+MPI_Datatype MPIType<double>() {
+  return MPI_DOUBLE;
+};
+
+template<>
+MPI_Datatype MPIType<float>() {
+  return MPI_FLOAT;
+};
+
+int Flip(unsigned int i, unsigned int n) {
+  unsigned int mask = 1 << i;
+  if (n & mask) {
+    // the bit is set: un-set it
+    return n & (~mask);
   } else {
-    // There was an error: throw an exception with a meaningful error message.
-    std::stringstream ss;
-    char err_msg[1024];
-    int len;
-    MPI_Error_string(ret_code, err_msg, &len);
-    ss << "MPI call failed in file " << fname << " on line " << line << " with error code " << ret_code
-       << "(" << err_msg << ").";
-    throw std::runtime_error(ss.str());
+    return n | mask;
   }
 }
 
-/**
- * Hello world in Open MPI.
- */
-void hello(int argc, char **argv) {
+template<typename T>
+int AllReduceSumManual(const std::vector<T> &data) {
   using namespace std;
-  int rank = -1, size = -1;
-  MPI_CHECK(MPI_Init(&argc, &argv));
-  MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
-  MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &size));
-  cout << "I'm process " << rank << " of " << size << "." << endl;
+  int local_id = -1, n_procs = -1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &local_id);
+  MPI_Comm_size(MPI_COMM_WORLD, &n_procs);
+  T buf_send, buf_recv;
 
-  MPI_CHECK(MPI_Finalize());
+  // assume proc count is PoT for now
+  int d = static_cast<int>(log2(n_procs));
+  cout << "d = " << d << endl;
+
+  int partition_size = static_cast<int>(ceil(data.size() / n_procs));
+  int my_start = partition_size * local_id;
+
+  T local_result = 0;
+  for (int i = my_start; i < my_start + partition_size; ++i) {
+    if (i < data.size()) {
+      // Ensure we deal with cases where the element count is a non-PoT.
+      local_result += data[i];
+    }
+  }
+
+  T global_result = local_result;
+  for (int i = 0; i < d; ++i) {
+    buf_send = global_result;
+    int dst = Flip(i, local_id);
+    MPI_Status istatus;
+    MPI_Send(&buf_send, 1, MPIType<T>(), dst, 0, MPI_COMM_WORLD);
+    MPI_Recv(&buf_recv, 1, MPIType<T>(), dst, 0, MPI_COMM_WORLD, &istatus);
+    global_result += buf_recv;
+  }
+  cout << "Global result [np = " << local_id << "]:" << global_result << endl;
+
+  return 0;
 }
 
-int simple_communication(int argc, char **argv) {
+template<typename T>
+int AllReduceSumBuiltin(const std::vector<T> &data) {
+  // TODO implement
+  return 0;
+}
+
+int AllReduceBenchmark(int argc, char **argv) {
+  using namespace std;
+  const int n_samples = 1 << 20;
+  srand(RANDOM_SEED);
+  MPI_Init(&argc, &argv);
+
+  // TODO(andreib): Use the C++ random library for much cleaner code.
+  vector<double> dummy_data;
+  for (int i = 0; i < n_samples; ++i) {
+    dummy_data.push_back((double) rand() / (double) RAND_MAX);
+  }
+
+  AllReduceSumManual(dummy_data);
+  AllReduceSumBuiltin(dummy_data);
+
+  int local_id = -1, n_procs = -1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &local_id);
+  MPI_Comm_size(MPI_COMM_WORLD, &n_procs);
+  if (local_id == 0) {
+    double res = accumulate(dummy_data.cbegin(), dummy_data.cend(), 0.0);
+    cout << "Single-thread result:" << res << endl;
+  }
+
+  MPI_Finalize();
+  return 0;
+}
+
+int SimpleCommunication(int argc, char **argv) {
   using namespace std;
   constexpr int N = 10;
   float vsend[N], vrecv[N];
@@ -58,7 +123,7 @@ int simple_communication(int argc, char **argv) {
 
   // Generate some dummy data to exchange
   for (int i = 0; i < N; ++i) {
-    vsend[i] = local_id * N + i;
+    vsend[i] = (local_id + 1) * N + i;
   }
 
   // Send data to right neighbor and get data from left neighbor, wrapping around.
@@ -87,5 +152,6 @@ int simple_communication(int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
-  return simple_communication(argc, argv);
+//  return SimpleCommunication(argc, argv);
+  return AllReduceBenchmark(argc, argv);
 }
