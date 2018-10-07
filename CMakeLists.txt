@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.10)
 project(hpsc)
 
 # Requires Open MPI (or equivalent) to be installed. On macOS, you can simply use `brew install openmpi` for this.

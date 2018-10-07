@@ -21,9 +21,14 @@ bool PathExists(const std::string &path);
 /// Checks whether the path exists and is a directory.
 bool IsDir(const std::string &path);
 
-#define MPI_CHECK(exp) mpi_safe_call(exp, __FILE__, __LINE__)
+bool EndsWith(const std::string &value, const std::string &ending);
 
-int MPISafeCall(int ret_code, const std::string &fname, int line);
+std::string Format(const std::string& fmt, ...);
+
+std::string Type2Str(int type);
+
+std::string GetDate();
+
 
 
 #endif // UTILS_H

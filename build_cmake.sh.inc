@@ -1,6 +1,4 @@
-#!/usr/bin/env bash
-
-set -eu -o pipefail
+#@IgnoreInspection BashAddShebang
 
 CMAKE_DIR="cmake-build-debug"
 
@@ -22,8 +20,10 @@ if ! [[ -d "$CMAKE_DIR" ]]; then
     mkdir "$CMAKE_DIR" && cd $_ && cmake ..
 fi
 
-(cd $CMAKE_DIR && make -j$(gnproc))
-
-for N_NODES in 2 4 8 16 24; do
-    mpirun -np "$N_NODES" -machinefile config/local-machine.txt $CMAKE_DIR/globsum
-done
+if hash nproc; then
+    N_PROC=$(nproc)
+else
+    N_PROC=$(gnproc)
+fi
+echo "Using $N_PROC processors to build."
+(cd $CMAKE_DIR && make -j${N_PROC})

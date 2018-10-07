@@ -1,12 +1,15 @@
+#include <chrono>
+#include <cmath>
 #include <iostream>
+#include <numeric>
 #include <sstream>
 #include <vector>
-#include <cmath>
-#include <numeric>
+#include <fstream>
+#include <src/common/utils.h>
 
 #include "mpi.h"
 
-// TODO(andreib): use gflags!
+// TODO(andreib): use gflags
 static const int NO_TAG = 0;
 static const unsigned int RANDOM_SEED = 1234;
 
@@ -34,20 +37,30 @@ int Flip(unsigned int i, unsigned int n) {
   }
 }
 
+
 template<typename T>
-int AllReduceSumManual(const std::vector<T> &data) {
+int AllReduceSum(const std::vector<T> &data, bool manual_reduce) {
   using namespace std;
   int local_id = -1, n_procs = -1;
   MPI_Comm_rank(MPI_COMM_WORLD, &local_id);
   MPI_Comm_size(MPI_COMM_WORLD, &n_procs);
   T buf_send, buf_recv;
 
-  // assume proc count is PoT for now
-  int d = static_cast<int>(log2(n_procs));
-  cout << "d = " << d << endl;
+  // Only support processor counts which are PoT for now.
+  auto d = static_cast<int>(log2(n_procs));
+  if (1 << d != n_procs) {
+    throw runtime_error("The number of MPI nodes must be a power of two.");
+  }
 
-  int partition_size = static_cast<int>(ceil(data.size() / n_procs));
+  // From lecture notes, p. 1-37: "If p < n, some processors are assigned more than one component each. Each
+  // processor sums-up its own components sequentially, then proceeds" (in the parallel manner).
+  auto partition_size = static_cast<int>(ceil(data.size() / n_procs));
   int my_start = partition_size * local_id;
+
+  if (local_id == 0) {
+    cout << "p = " << n_procs << " processors. Each processor will handle " << partition_size
+         << " elements before performing the reduction." << endl;
+  }
 
   T local_result = 0;
   for (int i = my_start; i < my_start + partition_size; ++i) {
@@ -57,47 +70,92 @@ int AllReduceSumManual(const std::vector<T> &data) {
     }
   }
 
+  // Even though a regular reduction would be enough, in this exercise we perform an all-reduce, such that at the end
+  // EVERY node has the global result.
   T global_result = local_result;
-  for (int i = 0; i < d; ++i) {
-    buf_send = global_result;
-    int dst = Flip(i, local_id);
-    MPI_Status istatus;
-    MPI_Send(&buf_send, 1, MPIType<T>(), dst, 0, MPI_COMM_WORLD);
-    MPI_Recv(&buf_recv, 1, MPIType<T>(), dst, 0, MPI_COMM_WORLD, &istatus);
-    global_result += buf_recv;
+  if (manual_reduce) {
+    for (int i = 0; i < d; ++i) {
+      buf_send = global_result;
+      int dst = Flip((unsigned) i, (unsigned) local_id);
+      MPI_Status istatus;
+      MPI_Send(&buf_send, 1, MPIType<T>(), dst, 0, MPI_COMM_WORLD);
+      MPI_Recv(&buf_recv, 1, MPIType<T>(), dst, 0, MPI_COMM_WORLD, &istatus);
+      global_result += buf_recv;
+    }
   }
-  cout << "Global result [np = " << local_id << "]:" << global_result << endl;
+  else {
+    buf_send = global_result;
+    MPI_Allreduce(&buf_send, &buf_recv, 1, MPIType<T>(), MPI_SUM, MPI_COMM_WORLD);
+    global_result = buf_recv;
+  }
 
-  return 0;
+//  cout << "Global result [p = " << local_id << "]: " << global_result << endl;
+  return global_result;
 }
 
-template<typename T>
-int AllReduceSumBuiltin(const std::vector<T> &data) {
-  // TODO implement
-  return 0;
+void WriteTimingResults(std::ofstream &file, const std::vector<std::chrono::duration<double>>& times_s) {
+  file << "run, time_s" << std::endl;
+  int i = 0;
+  for(const auto& time_s : times_s) {
+    file << i++ << ", " << time_s.count() << std::endl;
+  }
 }
 
 int AllReduceBenchmark(int argc, char **argv) {
   using namespace std;
-  const int n_samples = 1 << 20;
+
+  const unsigned int n_runs = 50;
+  const int n_samples = 1U << 24U;
   srand(RANDOM_SEED);
   MPI_Init(&argc, &argv);
+  int local_id = -1, n_procs = -1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &local_id);
+  MPI_Comm_size(MPI_COMM_WORLD, &n_procs);
+  vector<chrono::duration<double>> times_manual_s;
+  vector<chrono::duration<double>> times_builtin_s;
 
+  // Generate the dummy data once (in every processor, since we don't care about benchmarking the data sharing (yet)).
   // TODO(andreib): Use the C++ random library for much cleaner code.
   vector<double> dummy_data;
   for (int i = 0; i < n_samples; ++i) {
     dummy_data.push_back((double) rand() / (double) RAND_MAX);
   }
 
-  AllReduceSumManual(dummy_data);
-  AllReduceSumBuiltin(dummy_data);
+  for (unsigned int run_idx = 0; run_idx < n_runs; ++run_idx) {
+    MPI_Barrier(MPI_COMM_WORLD);
+    auto start_manual = chrono::system_clock::now();
+    double result_manual = AllReduceSum(dummy_data, true);
+    auto end_manual = chrono::system_clock::now();
 
-  int local_id = -1, n_procs = -1;
-  MPI_Comm_rank(MPI_COMM_WORLD, &local_id);
-  MPI_Comm_size(MPI_COMM_WORLD, &n_procs);
+    MPI_Barrier(MPI_COMM_WORLD);
+    auto start_builtin = chrono::system_clock::now();
+    double result_builtin = AllReduceSum(dummy_data, false);
+    auto end_builtin = chrono::system_clock::now();
+
+    if (local_id == 0) {
+      if (fabs(result_manual - result_builtin) > 1e-6) {
+        stringstream ss;
+        ss << "Different results obtained with manual (" << result_manual << ") and built-in (" << result_builtin
+           << ") versions of all-reduce!";
+        throw runtime_error(ss.str()); // NOLINT
+      }
+
+      times_manual_s.emplace_back(end_manual - start_manual);
+      times_builtin_s.emplace_back(end_builtin - start_builtin);
+    }
+  }
+
   if (local_id == 0) {
     double res = accumulate(dummy_data.cbegin(), dummy_data.cend(), 0.0);
     cout << "Single-thread result:" << res << endl;
+
+    ofstream f_manual(Format("../results/manual-%02d.csv", n_procs));
+    WriteTimingResults(f_manual, times_manual_s);
+
+    ofstream f_builtin(Format("../results/builtin-%02d.csv", n_procs));
+    WriteTimingResults(f_manual, times_builtin_s);
+
+    cout << "Wrote results." << endl;
   }
 
   MPI_Finalize();

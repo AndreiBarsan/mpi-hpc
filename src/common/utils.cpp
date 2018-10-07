@@ -1,26 +1,30 @@
 #include "utils.h"
 
+#include <memory>
+
+using namespace std;
+
 template<typename Out>
-void Split(const std::string &s, char delim, Out result) {
-  std::stringstream ss(s);
-  std::string item;
+void Split(const string &s, char delim, Out result) {
+  stringstream ss(s);
+  string item;
   while (getline(ss, item, delim)) {
     *(result++) = item;
   }
 }
 
-std::vector<std::string> Split(const std::string &s, char delim) {
-  std::vector<std::string> elems;
+vector<string> Split(const string &s, char delim) {
+  vector<string> elems;
   Split(s, delim, back_inserter(elems));
   return elems;
 }
 
-bool PathExists(const std::string &path) {
+bool PathExists(const string &path) {
   struct stat info;
   return stat(path.c_str(), &info) == 0;
 }
 
-bool IsDir(const std::string &path) {
+bool IsDir(const string &path) {
   struct stat info;
 
   if (stat(path.c_str(), &info) != 0) {
@@ -30,17 +34,46 @@ bool IsDir(const std::string &path) {
   return (info.st_mode & S_IFDIR) != 0;
 }
 
-int MPISafeCall(int ret_code, const std::string &fname, int line) {
-  if (MPI_SUCCESS == ret_code) {
-    return ret_code;
-  } else {
-    // There was an error: throw an exception with a meaningful error message.
-    std::stringstream ss;
-    char err_msg[1024];
-    int len;
-    MPI_Error_string(ret_code, err_msg, &len);
-    ss << "MPI call failed in file " << fname << " on line " << line << " with error code " << ret_code
-       << "(" << err_msg << ").";
-    throw std::runtime_error(ss.str());
+bool EndsWith(const string &value, const string &ending) {
+  if (ending.size() > value.size()) {
+    return false;
   }
+
+  return equal(ending.rbegin(), ending.rend(), value.rbegin());
 }
+
+string Format(const string &fmt, ...) {
+  // TODO-LOW(andrei): Use varadic templates to implement in a typesafe, string-friendly manner.
+  // Keeps track of the resulting string size.
+  size_t out_size = fmt.size() * 2;
+  unique_ptr<char[]> formatted;
+  va_list ap;
+  while (true) {
+    formatted.reset(new char[out_size]);
+    strcpy(&formatted[0], fmt.c_str());
+    va_start(ap, fmt);
+    int final_n = vsnprintf(&formatted[0], out_size, fmt.c_str(), ap);
+    va_end(ap);
+    if (final_n < 0 || static_cast<size_t>(final_n) >= out_size) {
+      int size_update = final_n - static_cast<int>(out_size) + 1;
+      out_size += abs(size_update);
+    }
+    else {
+      break;
+    }
+  }
+
+  return string(formatted.get());
+}
+
+string GetDate() {
+  time_t rawtime;
+  tm * timeinfo;
+  char today_s[200];
+  time (&rawtime);
+  timeinfo = localtime (&rawtime);
+  strftime(today_s, 200, "%Y-%m-%d",timeinfo);
+
+  return std::string(today_s);
+}
+
