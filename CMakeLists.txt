@@ -10,7 +10,7 @@ find_package(gflags REQUIRED)
 include_directories(SYSTEM ${MPI_INCLUDE_PATH} .)
 
 set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -msse3") # -fopenmp")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -msse3 -Wall -Wextra -Werror") # -fopenmp")
 
 # Assignment 1 Executables
 set(COMMON_SOURCES src/common/utils.cpp)
