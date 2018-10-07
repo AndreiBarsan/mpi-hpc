@@ -28,7 +28,7 @@ A possible sequence of actions could be:
 ```bash
 ./a01-local.sh
 virtualenv ~/.venv/hpsc
-source ~/.venv/bin/activate
+source ~/.venv/hpsc/bin/activate
 pip install -r requirements.txt
 cd src/a01
 python analysis.py
