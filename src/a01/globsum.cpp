@@ -6,6 +6,9 @@
 #include <vector>
 #include <fstream>
 #include <src/common/utils.h>
+#include <thread>
+
+#include "gflags/gflags.h"
 
 #include "mpi.h"
 
@@ -97,15 +100,15 @@ void WriteTimingResults(std::ofstream &file, const std::vector<std::chrono::dura
   file << "run, time_s" << std::endl;
   int i = 0;
   for(const auto& time_s : times_s) {
-    file << i++ << ", " << time_s.count() << std::endl;
+    file << i++ << "," << time_s.count() << std::endl;
   }
 }
 
 int AllReduceBenchmark(int argc, char **argv) {
   using namespace std;
 
-  const unsigned int n_runs = 50;
-  const int n_samples = 1U << 24U;
+  const unsigned int n_runs = 250;
+  const int n_samples = 1U << 26U;
   srand(RANDOM_SEED);
   MPI_Init(&argc, &argv);
   int local_id = -1, n_procs = -1;
@@ -143,17 +146,28 @@ int AllReduceBenchmark(int argc, char **argv) {
       times_manual_s.emplace_back(end_manual - start_manual);
       times_builtin_s.emplace_back(end_builtin - start_builtin);
     }
+
+    // Add some sleeps every now and then just to make sure the run times are sampled over a longer period of time.
+    if (run_idx % 5 == 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
   }
 
   if (local_id == 0) {
     double res = accumulate(dummy_data.cbegin(), dummy_data.cend(), 0.0);
     cout << "Single-thread result:" << res << endl;
 
-    ofstream f_manual(Format("../results/manual-%02d.csv", n_procs));
+    ofstream f_manual(Format("results/manual-%02d.csv", n_procs));
+    if  (!f_manual) {
+      throw runtime_error("Could not write outputs.");
+    }
     WriteTimingResults(f_manual, times_manual_s);
 
-    ofstream f_builtin(Format("../results/builtin-%02d.csv", n_procs));
-    WriteTimingResults(f_manual, times_builtin_s);
+    ofstream f_builtin(Format("results/builtin-%02d.csv", n_procs));
+    if  (!f_builtin) {
+      throw runtime_error("Could not write outputs.");
+    }
+    WriteTimingResults(f_builtin, times_builtin_s);
 
     cout << "Wrote results." << endl;
   }

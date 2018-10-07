@@ -27,3 +27,5 @@ else
 fi
 echo "Using $N_PROC processors to build."
 (cd $CMAKE_DIR && make -j${N_PROC})
+
+mkdir -p results
