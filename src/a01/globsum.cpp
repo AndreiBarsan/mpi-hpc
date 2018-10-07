@@ -21,31 +21,6 @@ static const unsigned int RANDOM_SEED = 1234;
 DEFINE_bool(multiple_ops, false, "Whether to perform multiple operations instead of just the sum.");
 
 
-// A little bit of template hacking..er.. magic to tame MPI!
-template<typename T>
-MPI_Datatype MPIType();
-
-template<>
-MPI_Datatype MPIType<double>() {
-  return MPI_DOUBLE;
-};
-
-template<>
-MPI_Datatype MPIType<float>() {
-  return MPI_FLOAT;
-};
-
-int Flip(unsigned int i, unsigned int n) {
-  unsigned int mask = 1 << i;
-  if (n & mask) {
-    // the bit is set: un-set it
-    return n & (~mask);
-  } else {
-    return n | mask;
-  }
-}
-
-
 template<typename T>
 std::tuple<T, T, T, T> AllReduceMultiple(const std::vector<T> &data, bool manual_reduce) {
   using namespace std;
@@ -186,7 +161,7 @@ void WriteTimingResults(std::ofstream &file, const std::vector<std::chrono::dura
 
 // TODO(andreib): Can we make the tuples varadic?
 template<int i, typename T>
-void check(std::tuple<T, T, T, T> manual, std::tuple<T, T, T, T> builtin) {
+void Check(std::tuple<T, T, T, T> manual, std::tuple<T, T, T, T> builtin) {
   using namespace std;
   T manual_res = get<i>(manual);
   T builtin_res = get<i>(builtin);
@@ -232,7 +207,7 @@ int AllReduceBenchmark(int argc, char **argv) {
       auto end_builtin = chrono::system_clock::now();
 
       if (local_id == 0) {
-        check<0>(result_manual, result_builtin);
+        Check<0>(result_manual, result_builtin);
 
         times_manual_s.emplace_back(end_manual - start_manual);
         times_builtin_s.emplace_back(end_builtin - start_builtin);

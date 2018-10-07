@@ -29,6 +29,19 @@ std::string Type2Str(int type);
 
 std::string GetDate();
 
+bool is_power_of_two(unsigned int n);
+
+// A little bit of template hacking..er.. magic to tame MPI!
+template<typename T>
+MPI_Datatype MPIType();
+
+template<>
+MPI_Datatype MPIType<double>();;
+
+template<>
+MPI_Datatype MPIType<float>();;
+
+int Flip(unsigned int i, unsigned int n);
 
 
 #endif // UTILS_H

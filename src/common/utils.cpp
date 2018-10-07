@@ -77,3 +77,27 @@ string GetDate() {
   return std::string(today_s);
 }
 
+int Flip(unsigned int i, unsigned int n) {
+  unsigned int mask = 1 << i;
+  if (n & mask) {
+    // the bit is set: un-set it
+    return n & (~mask);
+  } else {
+    return n | mask;
+  }
+}
+
+template<>
+MPI_Datatype MPIType<float>() {
+  return MPI_FLOAT;
+}
+
+bool is_power_of_two(unsigned int n) {
+  return n!= 0 && !((n - 1) & n);
+}
+
+template<>
+MPI_Datatype MPIType<double>() {
+  return MPI_DOUBLE;
+}
+
