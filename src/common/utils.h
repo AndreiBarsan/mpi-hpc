@@ -1,10 +1,12 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <chrono>
 #include <string>
 #include <vector>
 #include <sstream>
 #include <sys/stat.h>
+#include <fstream>
 
 #include "mpi.h"
 
@@ -32,16 +34,21 @@ std::string GetDate();
 bool is_power_of_two(unsigned int n);
 
 // A little bit of template hacking..er.. magic to tame MPI!
+// These helpers allow us to use MPI types from generic functions (provided the generic type is a basic type like
+// int/float/etc. that's supported by MPI, of course).
 template<typename T>
 MPI_Datatype MPIType();
 
 template<>
-MPI_Datatype MPIType<double>();;
+MPI_Datatype MPIType<double>();
 
 template<>
-MPI_Datatype MPIType<float>();;
+MPI_Datatype MPIType<float>();
 
 int Flip(unsigned int i, unsigned int n);
+
+void WriteTimingResults(std::string &fpath, const std::vector<std::chrono::duration<double>>& times_s);
+
 
 
 #endif // UTILS_H

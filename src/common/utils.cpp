@@ -96,6 +96,18 @@ bool is_power_of_two(unsigned int n) {
   return n!= 0 && !((n - 1) & n);
 }
 
+void WriteTimingResults(std::string &fpath, const std::vector<std::chrono::duration<double>> &times_s) {
+  std::ofstream file(fpath);
+  if (!file) {
+    throw std::runtime_error(Format("Could not write outputs to file %s.", fpath.c_str()));
+  }
+  file << "run, time_s" << std::endl;
+  int i = 0;
+  for(const auto& time_s : times_s) {
+    file << i++ << "," << time_s.count() << std::endl;
+  }
+}
+
 template<>
 MPI_Datatype MPIType<double>() {
   return MPI_DOUBLE;

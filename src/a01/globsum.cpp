@@ -13,10 +13,8 @@
 
 #include "mpi.h"
 
-// TODO(andreib): use gflags
 static const int NO_TAG = 0;
 static const unsigned int RANDOM_SEED = 1234;
-
 
 DEFINE_bool(multiple_ops, false, "Whether to perform multiple operations instead of just the sum.");
 
@@ -150,16 +148,7 @@ int AllReduceSum(const std::vector<T> &data, bool manual_reduce) {
   return global_result;
 }
 
-void WriteTimingResults(std::ofstream &file, const std::vector<std::chrono::duration<double>>& times_s) {
-  file << "run, time_s" << std::endl;
-  int i = 0;
-  for(const auto& time_s : times_s) {
-    file << i++ << "," << time_s.count() << std::endl;
-  }
-}
 
-
-// TODO(andreib): Can we make the tuples varadic?
 template<int i, typename T>
 void Check(std::tuple<T, T, T, T> manual, std::tuple<T, T, T, T> builtin) {
   using namespace std;
@@ -268,17 +257,10 @@ int AllReduceBenchmark(int argc, char **argv) {
 
   if (local_id == 0) {
     string label = FLAGS_multiple_ops ? "multiple" :  "sum";
-    ofstream f_manual(Format("results/manual-%s-%02d.csv", label.c_str(), n_procs));
-    if (!f_manual) {
-      throw runtime_error("Could not write outputs.");
-    }
-    WriteTimingResults(f_manual, times_manual_s);
-
-    ofstream f_builtin(Format("results/builtin-%s-%02d.csv", label.c_str(), n_procs));
-    if (!f_builtin) {
-      throw runtime_error("Could not write outputs.");
-    }
-    WriteTimingResults(f_builtin, times_builtin_s);
+    string fpath_manual = Format("results/manual-%s-%02d.csv", label.c_str(), n_procs);
+    WriteTimingResults(fpath_manual, times_manual_s);
+    string fpath_builtin = Format("results/builtin-%s-%02d.csv", label.c_str(), n_procs);
+    WriteTimingResults(fpath_builtin, times_builtin_s);
 
     cout << "Wrote results." << endl;
   }
@@ -287,56 +269,7 @@ int AllReduceBenchmark(int argc, char **argv) {
   return 0;
 }
 
-int SimpleCommunication(int argc, char **argv) {
-  using namespace std;
-  constexpr int N = 10;
-  float vsend[N], vrecv[N];
-
-  int local_id = -1, n_procs = -1;
-  MPI_Init(&argc, &argv);
-  MPI_Comm_rank(MPI_COMM_WORLD, &local_id);
-  MPI_Comm_size(MPI_COMM_WORLD, &n_procs);
-
-  if (0 == local_id) {
-    cout << "Simple communication example..." << endl;
-  }
-  char proc_name[1024];
-  int proc_name_len;
-  MPI_Get_processor_name(proc_name, &proc_name_len);
-  cout << "Processor " << local_id << "/" << n_procs << "." << endl;
-
-  // Generate some dummy data to exchange
-  for (int i = 0; i < N; ++i) {
-    vsend[i] = (local_id + 1) * N + i;
-  }
-
-  // Send data to right neighbor and get data from left neighbor, wrapping around.
-  int l_neighbor_id = (local_id - 1) % n_procs;
-  int r_neighbor_id =(local_id + 1) % n_procs;
-
-  MPI_Status istatus;
-  MPI_Send(vsend, N, MPI_FLOAT, r_neighbor_id, NO_TAG, MPI_COMM_WORLD);
-  MPI_Recv(vrecv, N, MPI_FLOAT, l_neighbor_id, NO_TAG, MPI_COMM_WORLD, &istatus);
-
-  cout << "Received in " << local_id << " OK!" << endl;
-  stringstream ss;
-  ss << "My numbers (" << local_id << "): ";
-  for (float i : vsend) {
-    ss << i << " ";
-  }
-  ss << "| Received numbers: ";
-  for (float i : vrecv) {
-    ss << i << " ";
-  }
-  cout << ss.str() << endl;
-
-
-  MPI_Finalize();
-  return 0;
-}
-
 int main(int argc, char **argv) {
-//  return SimpleCommunication(argc, argv);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   return AllReduceBenchmark(argc, argv);
 }

@@ -16,9 +16,13 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -msse3 -Wall -Wextra") # -fope
 set(COMMON_SOURCES src/common/utils.cpp)
 add_executable(globsum src/a01/globsum.cpp ${COMMON_SOURCES})
 add_executable(fanout src/a01/fanout.cpp ${COMMON_SOURCES})
+add_executable(ring src/a01/ring.cpp ${COMMON_SOURCES})
 
 target_compile_options(globsum PRIVATE ${MPI_CXX_COMPILE_FLAGS})
 target_link_libraries(globsum ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags)
 
 target_compile_options(fanout PRIVATE ${MPI_CXX_COMPILE_FLAGS})
 target_link_libraries(fanout ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags)
+
+target_compile_options(ring PRIVATE ${MPI_CXX_COMPILE_FLAGS})
+target_link_libraries(ring ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags)
