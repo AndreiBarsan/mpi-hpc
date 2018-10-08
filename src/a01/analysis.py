@@ -21,7 +21,36 @@ def parse_csvs(fpaths):
     return aggregated_df
 
 
-def main():
+def fix_df(df):
+    return df.reindex(sorted(df.columns), axis=1)
+
+
+def parse_csvs_p4(root):
+    fpaths = [os.path.join(root, dname) for dname in os.listdir(root) if 'e04' in dname]
+    data = {}
+    for fpath in fpaths:
+        fname = os.path.basename(fpath)
+        chunks = re.split('[-.]+', fname)
+        n_proc = int(chunks[4])
+        n = int(chunks[3])
+        method = chunks[1]
+
+        df = pd.read_csv(fpath, index_col=0)
+        df.rename(columns=lambda col_name: col_name.strip(), inplace=True)      # Remove spaces around column names
+        if method not in data:
+            data[method] = {}
+        if n not in data[method]:
+            data[method][n] = {}
+            # TODO(andreib): warm-up and cooldown run removal
+        data[method][n]['{:03d}'.format(n_proc)] = df['time_s']
+
+    for m in data.keys():
+        data[m] = {n: fix_df(pd.DataFrame(data[m][n])) for n in data[m]}
+
+    return data
+
+
+def plot_problem_02():
     # Assumes the script is ran from the directory in which it is located.
     results_dir = '../../results'
     builtin_fpaths = [os.path.join(results_dir, fname) for fname in os.listdir(results_dir) if 'builtin-sum' in fname]
@@ -56,6 +85,22 @@ def main():
     plt.legend()
     plt.grid(color=(0.75, 0.75, 0.75, 0.25))
     plt.show()
+
+
+def plot_problem_04():
+    results_dir = '../../results'
+    res = parse_csvs_p4(results_dir)
+    print("Grouped results:")
+    for n in sorted(res['grouped']):
+        c_data = res['grouped'][n]
+        m = c_data.mean()[0]
+        s = c_data.std()[0]
+        print("Grouped, n = {}, count = {}, mean = {:.6f}, std = {:.6f}".format(n, len(res['grouped'][n]), m, s))
+
+
+def main():
+    # plot_problem_02()
+    plot_problem_04()
 
 
 
