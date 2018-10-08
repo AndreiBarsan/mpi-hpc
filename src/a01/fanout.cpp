@@ -1,52 +1,74 @@
 /// A simple test implementation of one-to-all broadcast.
 
 #include <cmath>
+
+#include "gflags/gflags.h"
 #include "mpi.h"
+
 #include "src/common/utils.h"
 
+DEFINE_int32(npin, 0, "The processor which is the origin in the fan-out process.");
+
+
 /// Returns the ith bit of n.
-bool bit(unsigned int i, unsigned int n) {
+bool Bit(unsigned int i, unsigned int n) {
   return ((n >> i) & 1U) == 1U;
 }
 
 int fanout_experiment(int argc, char **argv) {
   using namespace std;
-  unsigned int npin = 0;
-
+  const int kStartVal = 13;
+  const int kNpIn = FLAGS_npin;
   MPI_Init(&argc, &argv);
   int local_id = -1, n_procs = -1;
+  int send_buf, recv_buf;
   MPI_Comm_rank(MPI_COMM_WORLD, &local_id);
   MPI_Comm_size(MPI_COMM_WORLD, &n_procs);
-
 
   if (! is_power_of_two(n_procs)) {
     throw runtime_error("The number of processors must be a power of two in a hypercube!");
   }
 
+  if (local_id == 0) {
+    cout << "Input is at " << kNpIn << endl;
+  }
+
   auto d = static_cast<int>(log2(n_procs));
 
   int val = -1;
-  if (local_id == npin) {
-    val = 13;
+  if (local_id == kNpIn) {
+    val = kStartVal;
   }
 
-  // TODO(andreib): Implement dis shit for arbitrary input processor.
-  for (unsigned int i = 0; i < d; i++) {
-    if (local_id < (1 << (i + 1))) {
-//      cout << "Step " << i << ", id = " << local_id << " active!" << endl;
+  // This works (Method A)
+//  for (unsigned int i = 0; i < d; i++) {
+//    send_buf = val;
+//    MPI_Send(&send_buf, 1, MPI_INT, Flip(i, local_id), 0, MPI_COMM_WORLD);
+//    MPI_Status status;
+//    MPI_Recv(&recv_buf, 1, MPI_INT, Flip(i, local_id), 0, MPI_COMM_WORLD, &status);
+//    if (recv_buf != -1) {
+//      val = recv_buf;
+//    }
+//  }
 
-      MPI_Status status;
-      int rec_src = Flip(i, local_id);
-      if (rec_src < local_id) {
-        MPI_Recv(&val, 1, MPI_INT, rec_src, 0, MPI_COMM_WORLD, &status);
-      }
-      else {
-        MPI_Send(&val, 1, MPI_INT, rec_src, 0, MPI_COMM_WORLD);
-      }
+  // Method B: A little less redundancy
+  for (int i = d - 1; i >= 0; i--) {
+    if (Bit(i, local_id) == Bit(i, kNpIn)) {
+      send_buf = val;
+      MPI_Send(&send_buf, 1, MPI_INT, Flip(i, local_id), 0, MPI_COMM_WORLD);
     }
+    else {
+      MPI_Status status;
+      MPI_Recv(&recv_buf, 1, MPI_INT, Flip(i, local_id), 0, MPI_COMM_WORLD, &status);
+      val = recv_buf;
+    }
+
   }
 
   cout << local_id << ": " << val << endl;
+  if (val != kStartVal) {
+    throw runtime_error(Format("Fanout failed in node %d! Start node was %d.", local_id, kNpIn));
+  }
 
   MPI_Finalize();
   return 0;
@@ -54,5 +76,6 @@ int fanout_experiment(int argc, char **argv) {
 
 
 int main(int argc, char **argv) {
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
   return fanout_experiment(argc, argv);
 }
