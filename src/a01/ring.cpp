@@ -131,10 +131,12 @@ int RingExperiment(int argc, char **argv) {
       }
     }
 
-    string fpath_grouped = Format("../results/e04-grouped-n-%02d-%02d.csv", n, n_procs);
-    string fpath_individ = Format("../results/e04-individ-n-%02d-%02d.csv", n, n_procs);
-    WriteTimingResults(fpath_grouped, times_grouped_s);
-    WriteTimingResults(fpath_individ, times_individ_s);
+    if (local_id == 0) {
+      string fpath_grouped = Format("../results/e04-grouped-n-%02d-%02d.csv", n, n_procs);
+      string fpath_individ = Format("../results/e04-individ-n-%02d-%02d.csv", n, n_procs);
+      WriteTimingResults(fpath_grouped, times_grouped_s);
+      WriteTimingResults(fpath_individ, times_individ_s);
+    }
   }
 
   MPI_Finalize();

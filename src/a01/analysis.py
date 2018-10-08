@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+warm_up = 5
+cool_down = 5
+
 
 def parse_csvs(fpaths):
     data = {}
@@ -15,7 +18,7 @@ def parse_csvs(fpaths):
         n_proc = int(re.split('[-.]+', fname)[2])
         df = pd.read_csv(fpath, index_col=0)
         df.rename(columns=lambda col_name: col_name.strip(), inplace=True)      # Remove spaces around column names
-        data['{:03d}'.format(n_proc)] = df['time_s'][5:-5]
+        data['{:03d}'.format(n_proc)] = df['time_s'][warm_up:-cool_down]
     aggregated_df = pd.DataFrame(data)
     aggregated_df = aggregated_df.reindex(sorted(aggregated_df.columns), axis=1)
     return aggregated_df
@@ -41,8 +44,7 @@ def parse_csvs_p4(root):
             data[method] = {}
         if n not in data[method]:
             data[method][n] = {}
-            # TODO(andreib): warm-up and cooldown run removal
-        data[method][n]['{:03d}'.format(n_proc)] = df['time_s']
+        data[method][n]['{:03d}'.format(n_proc)] = df['time_s'][warm_up:-cool_down]
 
     for m in data.keys():
         data[m] = {n: fix_df(pd.DataFrame(data[m][n])) for n in data[m]}
@@ -90,12 +92,53 @@ def plot_problem_02():
 def plot_problem_04():
     results_dir = '../../results'
     res = parse_csvs_p4(results_dir)
-    print("Grouped results:")
-    for n in sorted(res['grouped']):
-        c_data = res['grouped'][n]
-        m = c_data.mean()[0]
-        s = c_data.std()[0]
-        print("Grouped, n = {}, count = {}, mean = {:.6f}, std = {:.6f}".format(n, len(res['grouped'][n]), m, s))
+
+    methods = ['grouped', 'individ']
+    for_plot_m = {m: {} for m in methods}
+    for_plot_s = {m: {} for m in methods}
+
+    for method in methods:
+        print("{} results:".format(method))
+        for n in sorted(res[method]):
+            for procs in [2, 4, 8, 16]:
+                c_data = res[method][n]['{:03d}'.format(procs)]
+                # print(c_data)
+                m = c_data.mean() * 1000.0
+                s = c_data.std() * 1000.0
+
+                if n not in for_plot_m[method]:
+                    for_plot_m[method][n] = []
+                if n not in for_plot_s[method]:
+                    for_plot_s[method][n] = []
+                for_plot_m[method][n].append(m)
+                for_plot_s[method][n].append(s)
+
+                print("{}, n = {}, p = {}, count = {}, mean = {:.2f}ms, std = {:.2f}ms".format(
+                    method, n, procs, len(res['grouped'][n]), m, s))
+        print()
+
+    ns = for_plot_m['grouped'].keys()
+    for n in ns:
+        plt.figure()
+        # x = proc, y = time (with error bar); 1 line for grouped, 1 line for individ
+        vals_g = for_plot_m['grouped'][n]
+        vals_i = for_plot_m['individ'][n]
+
+        stds_g = for_plot_s['grouped'][n]
+        stds_i = for_plot_s['individ'][n]
+        xx = np.array([2, 4, 8, 16])
+        plt.errorbar(xx, vals_g, yerr=stds_g, label="Grouped transfer", capsize=8)
+        plt.errorbar(xx, vals_i, yerr=stds_i, label="Using n individual transfers", capsize=8)
+        plt.xlabel("$p$ (Number of processors)")
+        plt.ylabel("Time (ms)")
+        plt.ylim(0, 25)
+        plt.legend()
+        plt.title("n = {}".format(n))
+
+        for ext in ['png', 'eps']:
+            plt.savefig('../../results/plots/problem-04-n-{}.{}'.format(n, ext))
+
+    # plt.show()
 
 
 def main():

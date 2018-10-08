@@ -1,6 +1,7 @@
 #include "utils.h"
 
 #include <memory>
+#include <iomanip>
 
 using namespace std;
 
@@ -104,7 +105,7 @@ void WriteTimingResults(std::string &fpath, const std::vector<std::chrono::durat
   file << "run, time_s" << std::endl;
   int i = 0;
   for(const auto& time_s : times_s) {
-    file << i++ << "," << time_s.count() << std::endl;
+    file << i++ << "," << setprecision(12) << time_s.count() << std::endl;
   }
 }
 
