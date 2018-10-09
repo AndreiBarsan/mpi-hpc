@@ -1,6 +1,7 @@
 /// A simple test implementation of one-to-all broadcast.
 
 #include <cmath>
+#include <iostream>
 
 #include "gflags/gflags.h"
 #include "mpi.h"

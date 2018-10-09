@@ -20,7 +20,7 @@ if ! [[ -d "$CMAKE_DIR" ]]; then
     mkdir "$CMAKE_DIR" && cd $_ && cmake ..
 fi
 
-if hash nproc; then
+if hash nproc 1>/dev/null 2>&1; then
     N_PROC=$(nproc)
 else
     N_PROC=$(gnproc)

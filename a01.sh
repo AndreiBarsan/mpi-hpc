@@ -1,47 +1,56 @@
 #!/usr/bin/env bash
+# Used to run experiments from Assignment 1 on the CDF.
 
+################################################################################
+# Preamble
+################################################################################
 set -eu -o pipefail
 
 source "config.sh"
+source "build_cmake.sh.inc"
 
-if ! [[ -d "$CMAKE_DIR" ]]; then
-    read -e -p "CMake was not run yet, it would seem. Run now? [y/n] "
-    case "$REPLY" in
-        [yY])
-            echo "Ok, running."
-            ;;
-        [nN])
-            echo "Aborting."
-            exit 1
-            ;;
-        **)
-            echo "Unknown input, aborting."
-            exit 1
-            ;;
-    esac
-    mkdir "$CMAKE_DIR" && cd $_ && cmake ..
-fi
+PROBLEM="2"
 
-(cd $CMAKE_DIR && make -j$(gnproc))
 
-#for N_NODES in 2 4 8 16 24; do
-#    mpirun -np "$N_NODES" -machinefile config/local-machine.txt $CMAKE_DIR/globsum
-#done
+################################################################################
+# Setup and Orchestration
+################################################################################
+echo "Will rsync code to CDF..."
+time rsync -r --info=progress2 --exclude 'cmake-build-debug' \
+    --exclude 'results' \
+     . "${RPROJ}"
+echo "OK"
 
-#N_NODES=4
-
-rsync -r --info=progress2 "$CMAKE_DIR/" "${RBIN}"
-
-START_NODE="$(cat cmake-build-debug/cdf_machines | tail -n 1)"
+START_NODE="$(cat cdf_machines | tail -n 1)"
 RH="${CDF_USER}@${START_NODE}"
 
 echo "Will SSH to $RH. If you can't connect, make sure you are on the UofT network, e.g., using the VPN!"
-echo "You may have to manually connect first before passwordless SSH or MPI can work."
-ssh "$RH" cat "hpsc/bin/cdf_machines"
+echo "You may have to manually connect first and run 'kinit' MPI can work."
+
+ssh "$RH" "hpsc/build.sh"
+
 # The sed tails everything except the last line.
-ssh "$RH" cat "hpsc/bin/cdf_machines | sed '\$d' >| /tmp/machines"
+# We use the first line as the starting node, and the rest as workers.
+ssh "$RH" cat "hpsc/cdf_machines | sed '\$d' >| /tmp/machines"
 
-echo "Will do the mpirun now!"
-ssh "$RH" mpirun -np 4 -pernode -machinefile /tmp/machines hpsc/bin/globsum
 
+################################################################################
+# Main experiments
+################################################################################
+echo "Will do the mpirun now on $N_NODES nodes!"
+
+if [[ "$PROBLEM" == "2" ]]; then
+    echo -e "\n\n\tRunning problem $PROBLEM!\n\n"
+    for N_NODES in 2 4 8 16; do
+        echo -e "\n\n\tExperiment with ${N_NODES} nodes!\n\n"
+
+        ssh "$RH" mpirun -np $N_NODES -pernode -machinefile /tmp/machines hpsc/build/globsum --out_dir=hpsc/results
+        ssh "$RH" mpirun -np $N_NODES -pernode -machinefile /tmp/machines hpsc/build/globsum --out_dir=hpsc/results --multiple_ops
+    done
+else
+    # TODO run problem 4
+fi
+
+echo "Grabbing results back for number crunching..."
+time rsync -r --info=progress2 "hpsc/results/" "results/cdf/"
 

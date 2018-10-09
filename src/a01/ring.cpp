@@ -1,4 +1,5 @@
 #include <chrono>
+#include <iostream>
 #include <string>
 #include <vector>
 #include <thread>
@@ -49,8 +50,8 @@ void RingCommunication(std::vector<T> &data, int n, bool group_before_transfer) 
       data[i * n] = recv_buffer[i];
     }
 
-    delete send_buffer;
-    delete recv_buffer;
+    delete[] send_buffer;
+    delete[] recv_buffer;
   }
   else {
     // many sends and recvs

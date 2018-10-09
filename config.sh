@@ -7,5 +7,8 @@ REMOTE_HOST="wolf.cdf.toronto.edu"
 
 # Remote host
 RH="${CDF_USER}@${REMOTE_HOST}"
+# Remote project dir
+RPROJ="$RH:~/hpsc"
+
 # Remote bin dir
-RBIN="$RH:~/hpsc/bin"
+#RBIN="$RH:~/hpsc/bin"

@@ -17,6 +17,7 @@ static const int NO_TAG = 0;
 static const unsigned int RANDOM_SEED = 1234;
 
 DEFINE_bool(multiple_ops, false, "Whether to perform multiple operations instead of just the sum.");
+DEFINE_string(out_dir, "results/", "The directory where to write experiment results.");
 
 
 template<typename T>
@@ -257,9 +258,9 @@ int AllReduceBenchmark(int argc, char **argv) {
 
   if (local_id == 0) {
     string label = FLAGS_multiple_ops ? "multiple" :  "sum";
-    string fpath_manual = Format("results/manual-%s-%02d.csv", label.c_str(), n_procs);
+    string fpath_manual = Format("%s/manual-%s-%02d.csv", FLAGS_out_dir.c_str(), label.c_str(), n_procs);
     WriteTimingResults(fpath_manual, times_manual_s);
-    string fpath_builtin = Format("results/builtin-%s-%02d.csv", label.c_str(), n_procs);
+    string fpath_builtin = Format("%s/builtin-%s-%02d.csv", FLAGS_out_dir.c_str(), label.c_str(), n_procs);
     WriteTimingResults(fpath_builtin, times_builtin_s);
 
     cout << "Wrote results." << endl;
