@@ -55,6 +55,7 @@ def parse_csvs_p4(root):
 def plot_problem_02():
     # Assumes the script is ran from the directory in which it is located.
     results_dir = '../../results/cdf'
+    #  results_dir = '../../results/dell'
     builtin_fpaths = [os.path.join(results_dir, fname) for fname in os.listdir(results_dir) if 'builtin-sum' in fname]
     manual_fpaths = [os.path.join(results_dir, fname) for fname in os.listdir(results_dir) if 'manual-sum' in fname]
     builtin_fpaths_multi = [os.path.join(results_dir, fname) for fname in os.listdir(results_dir)
