@@ -49,7 +49,7 @@ else
     for N_NODES in 2 4 8 16; do
         echo -e "\n\n\tExperiment with ${N_NODES} nodes!\n\n"
 
-        ssh "$RH" mpirun -np $N_NODES -pernode -machinefile /tmp/machines hpsc/build/globsum --out_dir=hpsc/results --iterations=10
+        ssh "$RH" mpirun -np $N_NODES -pernode -machinefile /tmp/machines hpsc/build/ring --out_dir=hpsc/results --iterations=250
     done
 fi
 

@@ -77,7 +77,7 @@ void RingCommunication(std::vector<T> &data, int n, bool group_before_transfer) 
 
 int RingExperiment(int argc, char **argv) {
   const unsigned int n_runs = FLAGS_iterations;
-  const std::vector<int> ns = {1000, 2000, 4000, 8000, 16000};
+  const vector<int> ns = {1000, 2000, 4000, 8000, 16000};
   MPI_Init(&argc, &argv);
   int local_id = -1, n_procs = -1;
   MPI_Comm_rank(MPI_COMM_WORLD, &local_id);
@@ -102,17 +102,19 @@ int RingExperiment(int argc, char **argv) {
     }
 
     for(unsigned int run_idx = 0; run_idx < n_runs; ++run_idx) {
-      if (run_idx % 10 == 0) {
+      if (local_id == 0 && run_idx % 10 == 0) {
         cout << "Iteration " << run_idx << " for n = " << n << "." << endl;
       }
       MPI_Barrier(MPI_COMM_WORLD);
       auto start_grouped = chrono::system_clock::now();
       RingCommunication(dummy_data_A, n, true);
+      MPI_Barrier(MPI_COMM_WORLD);
       auto end_grouped = chrono::system_clock::now();
 
       MPI_Barrier(MPI_COMM_WORLD);
       auto start_individ = chrono::system_clock::now();
       RingCommunication(dummy_data_B, n, false);
+      MPI_Barrier(MPI_COMM_WORLD);
       auto end_individ = chrono::system_clock::now();
 
       times_grouped_s.emplace_back(end_grouped - start_grouped);
@@ -120,7 +122,7 @@ int RingExperiment(int argc, char **argv) {
 
       // Add some sleeps every now and then just to make sure the run times are sampled over a longer period of time.
       if (run_idx % 5 == 0) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        this_thread::sleep_for(chrono::milliseconds(100));
       }
 
       if (run_idx % 10 == 0) {

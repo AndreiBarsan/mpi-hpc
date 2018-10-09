@@ -69,25 +69,22 @@ def plot_problem_02():
     runs = len(builtin)
 
     plt.figure(figsize=(8, 6))
-    # ax = builtin.mean().plot(yerr=builtin.std(), label="MPI AllReduce Sum", capsize=8)
-    # ax = manual.mean().plot(yerr=manual.std(), label="Custom Manual AllReduce Sum", capsize=8, linestyle='--')
-    # ax = builtin_multi.mean().plot(yerr=builtin_multi.std(), label="MPI AllReduce Multiple Ops", capsize=8)
-    # ax = manual_multi.mean().plot(yerr=manual_multi.std(), label="Custom Manual AllReduce Multiple Ops", capsize=8, linestyle='--')
-
+    print("\nBuiltin")
+    print(builtin.mean(), builtin.std())
     ax = plt.errorbar([2, 4, 8, 16], builtin.mean(), yerr=builtin.std(),
                       label="MPI AllReduce Sum", capsize=8)
+    print("\nManual")
+    print(manual.mean(), manual.std())
     ax = plt.errorbar([2, 4, 8, 16], manual.mean(), yerr=manual.std(),
                       label="Custom Manual AllReduce Sum", capsize=8, linestyle='--')
+    print("\nBuiltin multi")
+    print(builtin_multi.mean(), builtin_multi.std())
     ax = plt.errorbar([2, 4, 8, 16], builtin_multi.mean(), yerr=builtin_multi.std(),
                       label="MPI AllReduce Multiple Ops", capsize=8)
+    print("\nManual multi")
+    print(manual_multi.mean(), manual_multi.std())
     ax = plt.errorbar([2, 4, 8, 16], manual_multi.mean(), yerr=manual_multi.std(),
                       label="Custom Manual AllReduce Multiple Ops", capsize=8, linestyle='--')
-
-    # int_keys = [int(x) for x in sorted(builtin.keys())]
-    # ax.set_xticks(range(len(int_keys)))
-    # ax.set_xticklabels(int_keys)
-    # for spine in ax.spines:
-    #     ax.spines[spine].set_visible(False)
     plt.ylim(0.0, 0.15)
 
     plt.xlabel("$p$ (number of processors)")
@@ -104,7 +101,7 @@ def plot_problem_02():
 
 
 def plot_problem_04():
-    results_dir = '../../results'
+    results_dir = '../../results/cdf'
     res = parse_csvs_p4(results_dir)
 
     methods = ['grouped', 'individ']
@@ -145,8 +142,12 @@ def plot_problem_04():
         plt.errorbar(xx, vals_i, yerr=stds_i, label="Using n individual transfers", capsize=8)
         plt.xlabel("$p$ (Number of processors)")
         plt.ylabel("Time (ms)")
-        plt.ylim(0, 25)
+        if n in [1000, 2000, 4000]:
+            plt.ylim(0, 500)
+        else:
+            plt.ylim(0, 2000)
         plt.legend()
+        plt.grid(color=(0.75, 0.75, 0.75, 0.25))
         plt.title("n = {}".format(n))
 
         for ext in ['png', 'eps']:
@@ -156,9 +157,8 @@ def plot_problem_04():
 
 
 def main():
-    plot_problem_02()
-    # plot_problem_04()
-
+    # plot_problem_02()
+    plot_problem_04()
 
 
 if __name__ == '__main__':

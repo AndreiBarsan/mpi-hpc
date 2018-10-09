@@ -189,11 +189,13 @@ int AllReduceBenchmark(int argc, char **argv) {
       MPI_Barrier(MPI_COMM_WORLD);
       auto start_manual = chrono::system_clock::now();
       auto result_manual = AllReduceMultiple(dummy_data, true);
+      MPI_Barrier(MPI_COMM_WORLD);
       auto end_manual = chrono::system_clock::now();
 
       MPI_Barrier(MPI_COMM_WORLD);
       auto start_builtin = chrono::system_clock::now();
       auto result_builtin = AllReduceMultiple(dummy_data, false);
+      MPI_Barrier(MPI_COMM_WORLD);
       auto end_builtin = chrono::system_clock::now();
 
       if (local_id == 0) {
