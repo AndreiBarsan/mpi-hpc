@@ -177,7 +177,7 @@ int AllReduceBenchmark(int argc, char **argv) {
   vector<chrono::duration<double>> times_builtin_s;
 
   // Generate the dummy data once (in every processor, since we don't care about benchmarking the data sharing (yet)).
-  // TODO(andreib): Use the C++ random library for much cleaner code.
+  // TODO(andreib): Use the modern C++ random library for much cleaner code.
   vector<double> dummy_data;
   for (int i = 0; i < n_samples; ++i) {
     dummy_data.push_back((double) rand() / (double) RAND_MAX);
