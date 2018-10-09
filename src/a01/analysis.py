@@ -77,8 +77,8 @@ def plot_problem_02():
 
     ax.set_xticks(range(len(int_keys)))
     ax.set_xticklabels(int_keys)
-    for spine in ax.spines:
-        ax.spines[spine].set_visible(False)
+    # for spine in ax.spines:
+    #     ax.spines[spine].set_visible(False)
     plt.ylim(0.0, 0.15)
 
     plt.xlabel("$p$ (number of processors)")
@@ -86,7 +86,8 @@ def plot_problem_02():
     plt.title(r"Time to add $2^{{25}}$ numbers (average over {} runs), in seconds".format(runs))
     plt.legend()
     plt.grid(color=(0.75, 0.75, 0.75, 0.25))
-    plt.show()
+    for ext in ['png', 'eps']:
+        plt.savefig('../../results/plots/problem-02.{}'.format(ext))
 
 
 def plot_problem_04():
@@ -142,8 +143,8 @@ def plot_problem_04():
 
 
 def main():
-    # plot_problem_02()
-    plot_problem_04()
+    plot_problem_02()
+    # plot_problem_04()
 
 
 
