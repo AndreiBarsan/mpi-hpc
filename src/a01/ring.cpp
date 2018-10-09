@@ -13,6 +13,7 @@
 using namespace std;
 
 DEFINE_int32(iterations, 10, "The number of times to run each experiment.");
+DEFINE_string(out_dir, "results/", "The directory where to write experiment results.");
 
 
 /// Performs the experiment from Assignment 1, Exercise 4.
@@ -133,8 +134,8 @@ int RingExperiment(int argc, char **argv) {
     }
 
     if (local_id == 0) {
-      string fpath_grouped = Format("../results/e04-grouped-n-%02d-%02d.csv", n, n_procs);
-      string fpath_individ = Format("../results/e04-individ-n-%02d-%02d.csv", n, n_procs);
+      string fpath_grouped = Format("%s/e04-grouped-n-%02d-%02d.csv", FLAGS_out_dir.c_str(), n, n_procs);
+      string fpath_individ = Format("%s/e04-individ-n-%02d-%02d.csv", FLAGS_out_dir.c_str(), n, n_procs);
       WriteTimingResults(fpath_grouped, times_grouped_s);
       WriteTimingResults(fpath_individ, times_individ_s);
     }

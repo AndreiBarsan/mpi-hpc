@@ -54,7 +54,7 @@ def parse_csvs_p4(root):
 
 def plot_problem_02():
     # Assumes the script is ran from the directory in which it is located.
-    results_dir = '../../results'
+    results_dir = '../../results/cdf'
     builtin_fpaths = [os.path.join(results_dir, fname) for fname in os.listdir(results_dir) if 'builtin-sum' in fname]
     manual_fpaths = [os.path.join(results_dir, fname) for fname in os.listdir(results_dir) if 'manual-sum' in fname]
     builtin_fpaths_multi = [os.path.join(results_dir, fname) for fname in os.listdir(results_dir)
@@ -69,23 +69,36 @@ def plot_problem_02():
     runs = len(builtin)
 
     plt.figure(figsize=(8, 6))
-    ax = builtin.mean().plot(yerr=builtin.std(), label="MPI AllReduce Sum", capsize=8)
-    ax = manual.mean().plot(yerr=manual.std(), label="Custom Manual AllReduce Sum", capsize=8, linestyle='--')
-    ax = builtin_multi.mean().plot(yerr=builtin_multi.std(), label="MPI AllReduce Multiple Ops", capsize=8)
-    ax = manual_multi.mean().plot(yerr=manual_multi.std(), label="Custom Manual AllReduce Multiple Ops", capsize=8, linestyle='--')
-    int_keys = [int(x) for x in sorted(builtin.keys())]
+    # ax = builtin.mean().plot(yerr=builtin.std(), label="MPI AllReduce Sum", capsize=8)
+    # ax = manual.mean().plot(yerr=manual.std(), label="Custom Manual AllReduce Sum", capsize=8, linestyle='--')
+    # ax = builtin_multi.mean().plot(yerr=builtin_multi.std(), label="MPI AllReduce Multiple Ops", capsize=8)
+    # ax = manual_multi.mean().plot(yerr=manual_multi.std(), label="Custom Manual AllReduce Multiple Ops", capsize=8, linestyle='--')
 
-    ax.set_xticks(range(len(int_keys)))
-    ax.set_xticklabels(int_keys)
+    ax = plt.errorbar([2, 4, 8, 16], builtin.mean(), yerr=builtin.std(),
+                      label="MPI AllReduce Sum", capsize=8)
+    ax = plt.errorbar([2, 4, 8, 16], manual.mean(), yerr=manual.std(),
+                      label="Custom Manual AllReduce Sum", capsize=8, linestyle='--')
+    ax = plt.errorbar([2, 4, 8, 16], builtin_multi.mean(), yerr=builtin_multi.std(),
+                      label="MPI AllReduce Multiple Ops", capsize=8)
+    ax = plt.errorbar([2, 4, 8, 16], manual_multi.mean(), yerr=manual_multi.std(),
+                      label="Custom Manual AllReduce Multiple Ops", capsize=8, linestyle='--')
+
+    # int_keys = [int(x) for x in sorted(builtin.keys())]
+    # ax.set_xticks(range(len(int_keys)))
+    # ax.set_xticklabels(int_keys)
     # for spine in ax.spines:
     #     ax.spines[spine].set_visible(False)
     plt.ylim(0.0, 0.15)
 
     plt.xlabel("$p$ (number of processors)")
     plt.ylabel("Time (s)")
-    plt.title(r"Time to add $2^{{25}}$ numbers (average over {} runs), in seconds".format(runs))
+    plt.title(r"Time to add $2^{{26}}$ numbers (average over {} runs), in seconds".format(runs))
     plt.legend()
     plt.grid(color=(0.75, 0.75, 0.75, 0.25))
+
+    # Don't use os.makedirs in case our base path is messed up. We don't want to start creating a 'results' dir in ~.
+    if not os.path.exists('../../results/plots'):
+        os.mkdir('../../results/plots')
     for ext in ['png', 'eps']:
         plt.savefig('../../results/plots/problem-02.{}'.format(ext))
 

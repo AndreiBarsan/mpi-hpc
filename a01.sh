@@ -9,15 +9,15 @@ set -eu -o pipefail
 source "config.sh"
 source "build_cmake.sh.inc"
 
-PROBLEM="2"
+PROBLEM="4"
 
 
 ################################################################################
 # Setup and Orchestration
 ################################################################################
 echo "Will rsync code to CDF..."
-time rsync -r --info=progress2 --exclude 'cmake-build-debug' \
-    --exclude 'results' \
+time rsync -rv --exclude 'cmake-build-debug' \
+    --exclude 'results' --exclude '.git' --exclude '.idea' \
      . "${RPROJ}"
 echo "OK"
 
@@ -37,10 +37,8 @@ ssh "$RH" cat "hpsc/cdf_machines | sed '\$d' >| /tmp/machines"
 ################################################################################
 # Main experiments
 ################################################################################
-echo "Will do the mpirun now on $N_NODES nodes!"
-
+echo -e "\n\n\tRunning problem $PROBLEM!\n\n"
 if [[ "$PROBLEM" == "2" ]]; then
-    echo -e "\n\n\tRunning problem $PROBLEM!\n\n"
     for N_NODES in 2 4 8 16; do
         echo -e "\n\n\tExperiment with ${N_NODES} nodes!\n\n"
 
@@ -48,9 +46,13 @@ if [[ "$PROBLEM" == "2" ]]; then
         ssh "$RH" mpirun -np $N_NODES -pernode -machinefile /tmp/machines hpsc/build/globsum --out_dir=hpsc/results --multiple_ops
     done
 else
-    # TODO run problem 4
+    for N_NODES in 2 4 8 16; do
+        echo -e "\n\n\tExperiment with ${N_NODES} nodes!\n\n"
+
+        ssh "$RH" mpirun -np $N_NODES -pernode -machinefile /tmp/machines hpsc/build/globsum --out_dir=hpsc/results --iterations=10
+    done
 fi
 
 echo "Grabbing results back for number crunching..."
-time rsync -r --info=progress2 "hpsc/results/" "results/cdf/"
+time rsync -rv "$RH:hpsc/results/" "results/cdf/"
 

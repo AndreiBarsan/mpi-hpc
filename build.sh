@@ -6,7 +6,7 @@ set -euo pipefail
 # for testing (very slow on CDF...)
 #rm -rf hpsc/build
 
-if [[ ! -d hpsc/build ]]; then
+if [[ ! -d ~/hpsc/build ]]; then
     echo -e "\nNo build dir; it seems CMake hasn't been run. Running now.\n\n"
     mkdir ~/hpsc/build
     cd ~/hpsc/build
