@@ -6,6 +6,8 @@ find_package(MPI REQUIRED)
 
 # Build gflags anywhere with -DREGISTER_BUILD_DIR=ON and this will work (no need to install).
 find_package(gflags REQUIRED)
+# TODO(andreib): Set appropriate flag if found or not found.
+find_package(Eigen3 REQUIRED NO_MODULE)
 
 include_directories(SYSTEM ${MPI_INCLUDE_PATH} .)
 
@@ -19,6 +21,8 @@ add_executable(globsum src/a01/globsum.cpp ${COMMON_SOURCES})
 add_executable(fanout src/a01/fanout.cpp ${COMMON_SOURCES})
 add_executable(ring src/a01/ring.cpp ${COMMON_SOURCES})
 
+add_executable(spline_problem src/a02/spline_problem.cpp ${COMMON_SOURCES})
+
 string(STRIP "${MPI_CXX_LIBRARIES}" MPI_CXX_LIBRARIES)
 string(STRIP "${MPI_CXX_LINK_FLAGS}" MPI_CXX_LINK_FLAGS)
 
@@ -30,3 +34,6 @@ target_link_libraries(fanout ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags)
 
 target_compile_options(ring PRIVATE ${MPI_CXX_COMPILE_FLAGS})
 target_link_libraries(ring ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags)
+
+target_compile_options(spline_problem PRIVATE ${MPI_CXX_COMPILE_FLAGS})
+target_link_libraries(spline_problem ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags Eigen3::Eigen)

@@ -9,21 +9,26 @@ from scipy.interpolate import spline as scipy_spline
 
 
 def main():
-    n = 300
+    # The problem description indicates we have a grid with points indexed from 0 to n inclusive, so n+1 total points,
+    # with the first (idx 0) = a, and the last (idx n) = b.
+    n = 10
     a = 0.0
-    b = 1.0
-    b = math.pi * 24.0
-    # fn = lambda x: x ** 2
-    fn = lambda x: x * np.sin(x)
+    # b = math.pi * 24.0
+    b = 3.0
+    fn = lambda x: x ** 2
+    # fn = lambda x: np.sin(x)
+    plot_gt_interpolation = True
 
+    # This is the dense sample set we plot the GT and the interpolation results on
     xs = np.linspace(a, b, 1000)
+    ys = fn(xs)
 
-    h = (b - a) / n
+    step_size = (b - a) / n
 
     # Remember the condition in the problem spec! There are n+1 points in total, with the first = a, and the last = b,
     # so n-1 inner points.
     knots_xs = np.linspace(a, b, n + 1)
-    print(knots_xs)
+    print("Knots:", knots_xs)
 
     midpoints = np.array([(knots_xs[i-1] + knots_xs[i]) / 2.0 for i in range(1, n + 1)])
     print("Knots shape: {}".format(knots_xs.shape))
@@ -34,9 +39,8 @@ def main():
     midpoints_and_endpoints[0] = knots_xs[0]
     midpoints_and_endpoints[1:(n+1)] = midpoints
     midpoints_and_endpoints[n+1] = knots_xs[n]
-    print("MaE shape: {}".format(midpoints_and_endpoints.shape))
-    print(midpoints_and_endpoints)
 
+    # Function values in the mid- and end-points
     u = fn(midpoints_and_endpoints)
 
     # TODO(andreib): Build sparse matrix.
@@ -52,6 +56,7 @@ def main():
         A[i, i + 1] = 1
 
     A *= 1.0 / 8.0
+    print("Solving system of shape: ", A.shape)
     c = np.linalg.solve(A, b)
 
     def phi(x):
@@ -66,10 +71,10 @@ def main():
 
     def phi_i(i, x):
         assert i >= 0 and i <= n + 1
-        return phi((x - a) / h - i + 2)
+        return phi((x - a) / step_size - i + 2)
 
     def poly(x):
-        i = int(math.ceil(x / h))
+        i = int(math.ceil(x / step_size))
         print(x, i)
         val = 0
         if i > 0:
@@ -85,22 +90,25 @@ def main():
         return sum(c[i] * phi_i(i, x) for i in range(n + 2))
 
     plt.figure()
-    # plt.plot(xs, ys, label="True function")
+    plt.plot(xs, ys, label="True function")
     plt.scatter(midpoints_and_endpoints, u, label="Knots")
-    print(midpoints_and_endpoints)
 
     # vals_slow = [poly_slow(x) for x in xs]
     # plt.plot(xs, vals_slow, label="Result (naive sum)")
-    print(xs)
     vals = [poly(x) for x in xs]
-    plt.plot(xs, vals, label="Result (fast intervals)")
+    plt.plot(xs, vals, '--', label="Result (fast intervals)")
 
     # Ground truth interpolation using a ready made spline interpolator
-    # xk = midpoints_and_endpoints
-    # yk = u
-    # xnew = xs
-    # gt_y = scipy_spline(xk, yk, xnew, order=2)
-    # plt.plot(xnew, gt_y, label="Computed with SciPy")
+    if plot_gt_interpolation:
+        xk = midpoints_and_endpoints
+        yk = u
+        xnew = xs
+        gt_y = scipy_spline(xk, yk, xnew, order=2)
+        plt.plot(xnew, gt_y, label="Computed with SciPy")
+
+    print("Coefs:", c)
+    print("b:    ", b)
+    print("Step size:", step_size)
 
     plt.legend()
     plt.show()
