@@ -1,4 +1,4 @@
-/// A simple implementation of one-to-all broadcast.
+/// A simple implementation of one-to-all broadcast for Problem 1 from Assignment 1.
 
 #include <cmath>
 #include <iostream>
