@@ -3,20 +3,28 @@
 import json
 import matplotlib.pyplot as plt
 import os
+import sys
 
 
 def main():
-    print(os.getcwd())
-    data = json.load(open("../../results/spline_output/splines-p01.json", 'r'))
+    root = sys.argv[1]
+    print("Reading plot data from root dir: {}".format(root))
 
-    x = data['x']
-    gt_y = data['gt_y']
-    interp_y = data['interp_y']
+    files = [os.path.join(root, f) for f in os.listdir(root) if 'output-problem' in f]
 
-    plt.scatter(data['control_x'], data['control_y'], label="Knots")
-    plt.plot(x, gt_y, label="Ground truth function")
-    plt.plot(x, interp_y, '--', label="Interpolation result")
-    plt.legend()
+    for file in files:
+        data = json.load(open(file, 'r'))
+
+        x = data['x']
+        gt_y = data['gt_y']
+        interp_y = data['interp_y']
+
+        plt.figure()
+        plt.scatter(data['control_x'], data['control_y'], label="Knots")
+        plt.plot(x, gt_y, label="Ground truth function")
+        plt.plot(x, interp_y, '--', label="Interpolation result")
+        plt.legend()
+
     plt.show()
 
 
