@@ -29,9 +29,13 @@ std::string Format(const std::string& fmt, ...);
 
 std::string Type2Str(int type);
 
+/// Returns a date string such as 2018-01-31.
 std::string GetDate();
 
-bool is_power_of_two(unsigned int n);
+/// Returns a string with the current working directory.
+std::string GetCWD();
+
+bool IsPowerOfTwo(unsigned int n);
 
 // A little bit of template hacking..er.. magic to tame MPI!
 // These helpers allow us to use MPI types from generic functions (provided the generic type is a basic type like

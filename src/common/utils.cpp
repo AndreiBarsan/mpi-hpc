@@ -1,5 +1,6 @@
 #include "utils.h"
 
+#include <experimental/filesystem>
 #include <memory>
 #include <iomanip>
 
@@ -78,6 +79,12 @@ string GetDate() {
   return std::string(today_s);
 }
 
+string GetCWD() {
+  // Seriously, I am sick and tired of writing hacky platform-specific code.
+  // I am VERY VERY happy #include <filesystem> will be a thing starting with C++17.
+  return std::experimental::filesystem::current_path();
+}
+
 int Flip(unsigned int i, unsigned int n) {
   unsigned int mask = 1 << i;
   if (n & mask) {
@@ -93,7 +100,7 @@ MPI_Datatype MPIType<float>() {
   return MPI_FLOAT;
 }
 
-bool is_power_of_two(unsigned int n) {
+bool IsPowerOfTwo(unsigned int n) {
   return n!= 0 && !((n - 1) & n);
 }
 

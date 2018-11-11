@@ -1,12 +1,12 @@
 //
 // Entry point for solving quadratic spline interpolation.
 //
+// TODO(andreib): Define from CMake.
+#define DEBUG_WITH_EIGEN
 
 #include <chrono>
 #include <cmath>
 #include <iostream>
-#include <numeric>
-#include <sstream>
 #include <vector>
 #include <fstream>
 #include <functional>
@@ -15,15 +15,14 @@
 #include <tuple>
 
 #include "gflags/gflags.h"
-
-// TODO(andreib): Define from CMake.
-#define DEBUG_WITH_EIGEN
-
-#ifdef DEBUG_WITH_EIGEN
-#include "Eigen/Eigen"
-#endif
-
 #include "mpi.h"
+
+#include "matrix.h"
+#include "serial_numerical.h"
+#include "parallel_numerical.h"
+
+DEFINE_string(out_dir, "../results/spline_output", "The directory where to write experiment results (e.g., for "
+                                                   "visualization).");
 
 // This is not great practice, but saves me lots of typing.
 using namespace std;
@@ -37,203 +36,6 @@ enum SolverTypes {
   // The MPI-powered solver implemented for assignment 2.
   kPartitionTwo
 };
-
-
-bool all_close(const vector<double> &left, const vector<double> &right) {
-  double epsilon = 1e-6;
-  for(int i = 0; i < left.size(); ++i) {
-    if (fabs(left[i] - right[i]) > epsilon) {
-      return false;
-    }
-  }
-  return true;
-}
-
-
-/// A quick and dirty row-major dense matrix class.
-template<typename T>
-class Matrix {
- public:
-    Matrix(uint32_t long n, uint32_t m, const vector<T> &data)
-        : rows_(n), cols_(m), data_(data)
-    {
-      assert (n * m == data.size());
-    }
-
-    T& operator()(int n, int m) {
-      assert (n >= 0 && n < rows_);
-      assert (m >= 0 && m < cols_);
-      return data_[n * cols_ + m];
-    }
-
-    T operator()(int n, int m) const {
-      assert (n >= 0 && n < rows_);
-      assert (m >= 0 && m < cols_);
-      return data_[n * cols_ + m];
-    }
-
-    bool all_close(const Matrix<T> &other) const {
-      assert (rows_ == other.rows_ && cols_ == other.cols_);
-      T epsilon = 1e-6;   // LoL hack
-      for(int i = 0; i < rows_; ++i) {
-        for(int j = 0; j < cols_; ++j) {
-          if (fabs((*this)(i, j) - other(i, j) > epsilon)) {
-            return false;
-          }
-        }
-      }
-      return true;
-    }
-
- public:
-  const uint32_t rows_, cols_;
-
- private:
-  vector<T> data_;
-};
-
-
-/// Implements a square banded matrix. Stores data in compact row-major order. Assumes each row has 2 * band + 1
-/// elements except the first and the last 'band'.
-///
-/// While the original problem for quadratic spline interpolation is just tridiagonal, the final reduced system is
-/// banded with a wider band, so we do need to implement our matrices to support this.
-template<typename T>
-class BandMatrix {
-
- public:
-  BandMatrix(uint32_t n, const std::vector<T> &data) : n_(n), bandwidth_(1UL), data_(data) {
-    // Check that we got the right number of elements.
-    uint32_t effective_bw = 2 * bandwidth_ + 1;
-    uint32_t missing_at_edge = (effective_bw - 2) * (effective_bw - 1) / 2;
-    assert(data.size() == (bandwidth_ * 2 + 1) * n - 2 * missing_at_edge);
-  }
-
-//  BandRow<T> operator[](int i) {
-//    return BandRow<T>(i, &data_, n_, bandwidth_);
-//  }
-//
-//  BandRow<T> operator[](int i) const {
-//    return BandRow<T>(i, &data_, n_, bandwidth_);
-//  }
-
-  T& operator()(int row_id, int col_id) {
-    assert(row_id >= 0 && row_id < n_);
-    assert(col_id >= 0 && col_id < n_);
-
-    if (abs(col_id - row_id) <= bandwidth_) {
-      int off = col_id - row_id;
-      return data_.at(row_id * (bandwidth_ * 2 + 1) + off);
-    }
-    else {
-      throw runtime_error("Cannot access off-banded-diagonal element in non-const way.");
-    }
-  }
-
-  // TODO(andreib): Make this more consistent.
-  T get(int row_id, int col_id) const {
-    assert(row_id >= 0 && row_id < n_);
-    assert(col_id >= 0 && col_id < n_);
-
-    if (abs(col_id - row_id) <= bandwidth_) {
-      int off = col_id - row_id;
-      return data_[row_id * (bandwidth_ * 2 + 1) + off];
-    }
-    else {
-      return 0;
-    }
-  }
-
-  BandMatrix& operator*(const T& other_scalar) {
-    for (T &val : data_) {
-      val *= other_scalar;
-    }
-    return *this;
-  }
-
-  uint32_t get_n() const {
-    return n_;
-  }
-
-  /// Returns a dense representation of the data in this matrix.
-  Matrix<T> get_dense() const {
-    vector<T> result_data;
-    for (int i = 0; i < n_; ++i) {
-      for (int j = 0; j < n_; ++j) {
-        result_data.push_back(this->get(i, j));
-      }
-    }
-    return Matrix<T>(n_, n_, result_data);
-  }
-
-  uint32_t get_bandwidth() const {
-    return bandwidth_;
-  }
-
- private:
-  uint32_t bandwidth_;
-  uint32_t n_;
-  std::vector<T> data_;
-};
-
-template<typename T>
-Matrix<T> operator*(const Matrix<T> &left, const Matrix<T> &right) {
-  assert(left.cols_ == right.rows_);
-  vector<T> res_data;
-  for(int i = 0; i < left.rows_ * right.cols_; ++i) {
-    res_data.push_back(0.0);
-  }
-
-  Matrix<T> result(left.rows_, right.cols_, res_data);
-  for(int i = 0; i < left.rows_; ++i) {
-    for(int j = 0; j < right.cols_; ++j) {
-      for(int k = 0; k < left.cols_; ++k) {
-        result(i, j) += left(i, k) * right(k, j);
-      }
-    }
-  }
-  return result;
-}
-
-/// Useful for printing a matrix as text to a stream. (Includes all zeros.)
-template<typename T>
-ostream& operator<<(ostream& out, const BandMatrix<T> &m) {
-  int n = m.get_n();
-
-  for(int i = 0; i < n; ++i) {
-    for(int j = 0; j < n; ++j) {
-      out << m.get(i, j) << " ";
-    }
-    out << endl;
-  }
-
-  return out;
-}
-
-template<typename T>
-ostream& operator<<(ostream& out, const Matrix<T> &m) {
-  for(int i = 0; i < m.rows_; ++i) {
-    for(int j = 0; j < m.cols_; ++j) {
-      out << m(i, j) << " ";
-    }
-    out << endl;
-  }
-
-  return out;
-}
-
-/// Prints a vector of printable things to a stream.
-template<typename T>
-ostream& operator<<(ostream& out, const vector<T>& data) {
-  int n = data.size();
-  for (int i = 0; i < n; ++i) {
-    out << data[i];
-    if (i < n - 1) {
-      out << ", ";
-    }
-  }
-  return out;
-}
 
 
 /// Identical functionality to the 'linspace' function from numpy.
@@ -271,6 +73,7 @@ class SplineProblem {
   BandMatrix<double> get_A() const {
     vector<double> data;
 
+    data.push_back(0);    // This is just for padding.
     data.push_back(4);
     data.push_back(4);
     for (int i = 1; i < n_ + 1; ++i) {
@@ -280,6 +83,7 @@ class SplineProblem {
     }
     data.push_back(4);
     data.push_back(4);
+    data.push_back(0);    // This is just for padding.
 
     return BandMatrix<double>(n_ + 2, data) * (1.0 / 8.0);
   }
@@ -380,6 +184,11 @@ SplineProblem BuildSecondProblem(int n) {
   return SplineProblem("sin", n, function, 0.0, M_PI * 12.0);
 }
 
+SplineProblem BuildCustomProblem(int n) {
+  auto function = [](double x) { return 3.0 * sin(x) + sin(3 * x); };
+  return SplineProblem("custom", n, function, 0.0, M_PI * 6.0);
+}
+
 uint32_t min(uint32_t a, uint32_t b) {
   if (a > b) {
     return b;
@@ -388,99 +197,6 @@ uint32_t min(uint32_t a, uint32_t b) {
     return a;
   }
 }
-
-/// Performs LU factorization of the banded matrix A, in-place.
-void BandedLUFactorization(BandMatrix<double> &A, bool check_lu) {
-  // For debugging
-  Matrix<double> A_orig = A.get_dense();
-  uint32_t n = A.get_n();
-
-  uint32_t l = A.get_bandwidth();
-  uint32_t u = A.get_bandwidth();
-  int bw = l + u + 1;
-
-  for (uint32_t k = 0; k < n - 1; ++k) {
-    for (uint32_t i = k + 1; i <= min(k + l, n - 1); ++i) {
-      A(i, k) = A(i, k) / A(k, k);
-
-      for (uint32_t j = k + 1; j <= min(k + u, n - 1); ++j) {
-        A(i, j) = A(i, j) - A(i, k) * A(k, j);
-      }
-    }
-  }
-
-  if (check_lu) {
-    vector<double> lower_data;
-    vector<double> upper_data;
-    for (int i = 0; i < n; ++i) {
-      for (int j = 0; j < n; ++j) {
-        if (i > j) {
-          lower_data.push_back(A.get(i, j));
-          upper_data.push_back(0.0);
-        } else {
-          lower_data.push_back(0.0);
-          upper_data.push_back(A.get(i, j));
-        }
-      }
-    }
-
-    Matrix<double> lower(n, n, lower_data);
-    // Ensure we have the implicit 1's on the diagonal.
-    for (int i = 0; i < n; ++i) {
-      lower(i, i) = 1.0;
-    }
-    Matrix<double> upper(n, n, upper_data);
-    bool all_close = A_orig.all_close(lower * upper);
-    if (!all_close) {
-      throw runtime_error("LU-decomposition is incorrect! Get a refund! ;)");
-    }
-  }
-}
-
-/*
- * Ax = b
- * LU-decompose A, s.t. A = LU.
- * LUx = b
- * Solve with forward substitution:
- * Lz = b
- *
- * Then, using the z, perform the second (back)substitution:
- * Ux = z
- */
-/// Solves the given banded linear system in-place using a LU factorization.
-/// Note: Destroys A and b by performing the factorization and substitutions in-place.
-Matrix<double> SolveCustom(BandMatrix<double> &A, Matrix<double> &b, bool check_lu = false) {
-  // TODO(andreib): Update methods to support solving MULTIPLE systems!
-  uint32_t n = A.get_n();
-  assert(b.rows_ == n);
-
-  cout << "Will solve " << b.cols_ << " linear systems." << endl;
-  BandedLUFactorization(A, check_lu);
-
-  // Perform forward substitution to find intermediate result z.
-  Matrix<double> z(b);
-  int bw = A.get_bandwidth();
-  for (int i = 0; i < n; ++i) {
-    for(int j = max(0, i - bw); j <= i - 1; ++j) {
-      b(i, 0) = b(i, 0) - A(i, j) * z(j, 0);
-    }
-    z(i, 0) = b(i, 0); // / A(i, i);  // No divide because lower always has a 1 on the diagonal!
-  }
-
-  // Perform backsubstitution
-  // We store our output here and the rhs is z.
-  Matrix<double> x(b);
-
-  for (int j = n - 1; j >= 0; --j) {
-    x(j, 0) = z(j, 0) / A(j, j);        // the upper matrix has non-ones on diag, so we DO need to divide!
-    for (int i = max(0, j - bw); i <= max(0, j - 1); i++) {
-      z(i, 0) = z(i, 0) - A(i, j) * x(j, 0);
-    }
-  }
-
-  return x;
-}
-
 
 /// Solves a linear banded system using the specified method.
 /// We need the (ugly) argc and argv args for the MPI case.
@@ -507,12 +223,9 @@ Matrix<double> SolveSystem(
       }
       b_eigen(i) = b[i];
     }
-
-    cout << "Eigen setup complete." << endl;
     Eigen::Matrix<double, Dynamic, 1> x = A_eigen.colPivHouseholderQr().solve(b_eigen);
-    cout << "Eigen solution computed." << endl;
 
-    // Dirty conversion back to plain old vectors.
+    // Convert the Eigen matrix to our own type and return.
     vector<double> res;
     for (int i = 0; i < A.get_n(); ++i) {
       res.push_back(x(i));
@@ -523,32 +236,40 @@ Matrix<double> SolveSystem(
 #endif
   }
   else if (method == SolverTypes::kCustomSingleThread) {
-    ::Matrix<double> b_mat(A.get_n(), 1, b);
-    return SolveCustom(A, b_mat);
+    Matrix<double> b_mat(A.get_n(), 1, b);
+    return SolveSerial(A, b_mat);
+  }
+  else if (method == SolverTypes::kPartitionTwo) {
+    Matrix<double> b_mat(A.get_n(), 1, b);
+    return SolveParallel(A, b_mat, argc, argv);
   }
   else {
     throw runtime_error("Unsupported solver type.");
   }
 }
 
-SplineSolution<double> Solve(const SplineProblem& problem, int argc, char **argv) {
+SplineSolution<double> Solve(const SplineProblem& problem, SolverTypes solver, int argc, char **argv) {
+  MPI_SETUP;
+
   auto A = problem.get_A();
   auto u = problem.get_u();
   cout << "System setup complete." << endl;
 
   BandMatrix<double> A_cpy(A);
   vector<double> u_cpy = u;
-  auto c = SolveSystem(A, u, argc, argv, SolverTypes::kCustomSingleThread);
+  auto c = SolveSystem(A, u, argc, argv, solver);
+  MASTER {
 #ifdef DEBUG_WITH_EIGEN
-  auto c_eigen = SolveSystem(A_cpy, u_cpy, argc, argv, SolverTypes::kEigenDense);
-  cout << "Eigen solution: " << c_eigen << endl;
-  cout << "Our solution:   " << c << endl;
-  if (! c.all_close(c_eigen)) {
-    throw runtime_error("Sanity check failed! Our solution was different from what Eigen computed.");
-  }
+    // Make the master node check the solution using a built-in solver, if it is available.
+    auto c_eigen = SolveSystem(A_cpy, u_cpy, argc, argv, SolverTypes::kEigenDense);
+    cout << "Eigen solution: " << c_eigen << endl;
+    cout << "Our solution:   " << c << endl;
+    if (!c.all_close(c_eigen)) {
+      throw runtime_error("Sanity check failed! Our solution was different from what Eigen computed.");
+    }
 #endif
-
-  cout << "Finished computing solution to problem: " << problem.get_full_name() << endl;
+    cout << "Finished computing solution to problem: " << problem.get_full_name() << endl;
+  }
 
   // TODO(andreib): Populate this accordingly after computation complete, including ERROR INFO!
   vector<double> c_vec;
@@ -558,9 +279,10 @@ SplineSolution<double> Solve(const SplineProblem& problem, int argc, char **argv
   return SplineSolution<double>(u, c_vec, problem);
 }
 
-void Save(const SplineSolution<double> &solution) {
-  // These are the points where we plot the interpolated result (and the GT fn).
+void Save(const SplineSolution<double> &solution, const string &out_dir) {
+  cout << "Will save results to output directory: " << out_dir << endl;
   auto &problem = solution.problem_;
+  // These are the points where we plot the interpolated result (and the GT fn).
   auto plot_points = Linspace(problem.a_, problem.b_, 3 * problem.n_ + 1);
 
   vector<double> gt_y;
@@ -570,11 +292,10 @@ void Save(const SplineSolution<double> &solution) {
     interp_y.push_back(solution(x));
   }
 
-  // TODO make out dir arg so you can use CDF if needed.
-  string out_dir = "../results/spline_output";
   if (! IsDir(out_dir)) {
     if (mkdir(out_dir.c_str(), 0755) == -1) {
-      throw runtime_error("Coult not create output dir.");
+      throw runtime_error(Format("Coult not create output dir: %s from working dir %s.", out_dir.c_str(),
+                                 GetCWD().c_str()));
     }
     else {
       cout << "Created output directory: " << out_dir << endl;
@@ -595,49 +316,96 @@ void Save(const SplineSolution<double> &solution) {
   dump << "\t\"interp_y\": [" << interp_y << "]" << endl;
   dump << "}";
 
-  cout << "Interpolation result:" << endl;
-  cout << interp_y << endl;
-  cout << interp_y[interp_y.size() - 2] << " ";
-  cout << interp_y[interp_y.size() - 1] << " ";
-  cout << interp_y[interp_y.size() - 0] << " ";
+//  cout << "Interpolation result:" << endl;
+//  cout << interp_y << endl;
+//  cout << interp_y[interp_y.size() - 2] << " ";
+//  cout << interp_y[interp_y.size() - 1] << " ";
+//  cout << interp_y[interp_y.size() - 0] << " ";
+}
+
+/// A simple test to ensure that we support multiple right-hand sides OK. (And a pentadiagonal matrix.)
+void TestMultiRHS() {
+  // Bandwidth is 2 so effective bw is 5. Rows have 3, 4, 5, ..., 5, 4, 3 elements.
+  BandMatrix<double> A(8, {
+    // Solution: pad with zeros in the beginning and end for ease of indexing.
+     0, 0, 1, 0, 0,
+     0, 0, 2, 0, 0,
+     0, 0, 3, 0, 0,
+         0, 0, 4, 0, 0,
+            0, 0, 5, 0, 0,
+               0, 0, 6, 0, 0,
+                  0, 0, 7, 0, 0,
+                     0, 0, 8, 0, 0
+    }, 2);
+  Matrix<double> B(8, 3, {
+    1, 0, 2,
+    2, 0, 2,
+    3, 0, 2,
+    4, 0, 2,
+    5, 0, 2,
+    6, 0, 2,
+    7, 0, 2,
+    8, 0, 2,
+  });
+  BandMatrix<double> C(5, {
+    0, 1, 1,
+    2, 2, 2,
+    3, 3, 3,
+    4, 4, 4,
+    5, 5, 0
+  });
+  cout << A << endl << B << endl << C << endl;
+
+  auto x = SolveSerial(A, B, true);
+
+  Matrix<double> expected_x(8, 3, {
+    1, 0, 2,
+    1, 0, 1,
+    1, 0, 0.666667,
+    1, 0, 0.5,
+    1, 0, 0.4,
+    1, 0, 0.333333,
+    1, 0, 0.285714,
+    1, 0, 0.25,
+  });
+
+  assert (expected_x.all_close(x));
+  cout << "Multi-system solver seems to be OK." << endl;
 }
 
 int SplineExperiment(int argc, char **argv) {
-  vector<int> ns = {30, 62, 126, 254, 510};
-
-  int processor_rank;
   MPI_Init(&argc, &argv);
-  MPI_Comm_rank(MPI_COMM_WORLD, &processor_rank);
-//  vector<int> ns = {30};
+  MPI_SETUP;
+  vector<int> ns = {30, 62, 126, 254, 510};
+//  vector<int> ns = {30}; //, 62, 126, 254, 510};
 
-  // TODO(andreib): If time, write proper test for this.
-//  vector<double> a_d = {1.0, 0.0, 0.0, 0.0, 3.0, 0.0, 1.0, 0.0, 1.0};
-//  vector<double> b_d = Linspace(1, 9, 9);
-//  Matrix<double> a(3, 3, a_d);
-//  Matrix<double> b(3, 3, b_d);
-//  cout << a << endl << b << endl;
-//  cout << a * b << endl;
+//  SolverTypes solver = SolverTypes::kPartitionTwo;
+  SolverTypes solver = SolverTypes::kCustomSingleThread;
+//  MASTER {
+//    TestMultiRHS();
+//  }
 
   for (int n : ns) {
     // For both problems, 'Solve' generates the problem matrices and vectors, applies the partitioning to compute the
     // solution, computes maximum errors within each processor's subintervals, and the global errors over all nodes
     // and over 3n+1 points.
-    auto solution_a = Solve(BuildFirstProblem(n), argc, argv);
-    if (0 == processor_rank) {
-      Save(solution_a);
-    }
-    auto solution_b = Solve(BuildSecondProblem(n), argc, argv);
-    if (0 == processor_rank) {
-      Save(solution_b);
+    auto problems = {BuildFirstProblem(n), BuildSecondProblem(n), BuildCustomProblem(n)};
+    for (const auto &problem : problems) {
+      auto solution = Solve(problem, solver, argc, argv);
+      MASTER {
+        Save(solution, FLAGS_out_dir);
+      }
     }
   }
 
 //  system("python ../src/a02/plot_output.py ../results/spline_output/");
 
+  MPI_Finalize();
   return 0;
 }
 
 
 int main(int argc, char **argv) {
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
   return SplineExperiment(argc, argv);
 }

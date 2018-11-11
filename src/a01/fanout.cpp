@@ -26,7 +26,7 @@ int fanout_experiment(int argc, char **argv) {
   MPI_Comm_rank(MPI_COMM_WORLD, &local_id);
   MPI_Comm_size(MPI_COMM_WORLD, &n_procs);
 
-  if (! is_power_of_two(n_procs)) {
+  if (!IsPowerOfTwo(n_procs)) {
     throw runtime_error("The number of processors must be a power of two in a hypercube!");
   }
 
