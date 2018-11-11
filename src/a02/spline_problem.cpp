@@ -39,6 +39,17 @@ enum SolverTypes {
 };
 
 
+bool all_close(const vector<double> &left, const vector<double> &right) {
+  double epsilon = 1e-6;
+  for(int i = 0; i < left.size(); ++i) {
+    if (fabs(left[i] - right[i]) > epsilon) {
+      return false;
+    }
+  }
+  return true;
+}
+
+
 /// A quick and dirty row-major dense matrix class.
 template<typename T>
 class Matrix {
@@ -320,8 +331,6 @@ class SplineSolution {
   T operator()(T x) const {
     /// Computes the interpolation result at point x.
     auto i = static_cast<int>(ceil(x / problem_.step_size_));
-//    cout << "Computed i = " << i << ", n = " << problem_.n_ << endl;
-//    cout << "x = " << x << ", step size = " << problem_.step_size_ << endl;
     T val = 0;
 
     if (i > 0) {
@@ -363,12 +372,11 @@ class SplineSolution {
 
 SplineProblem BuildFirstProblem(int n) {
   auto function = [](double x) { return x * x; };
-  // TODO(andreib): change back to 0..1
-  return SplineProblem("quad", n, function, 0.0, 3.0);
+  return SplineProblem("quad", n, function, 0.0, 1.0);
 }
 
 SplineProblem BuildSecondProblem(int n) {
-  auto function = [](double x) { return x * sin(x); };
+  auto function = [](double x) { return sin(x); };
   return SplineProblem("sin", n, function, 0.0, M_PI * 12.0);
 }
 
@@ -381,25 +389,12 @@ uint32_t min(uint32_t a, uint32_t b) {
   }
 }
 
-vector<double> SolveCustom(BandMatrix<double> &A, const Matrix<double> &b) {
-  // Destroys A by performing the factorization in-place.
-
-  // For debugging, this wastes cycles
+/// Performs LU factorization of the banded matrix A, in-place.
+void BandedLUFactorization(BandMatrix<double> &A, bool check_lu) {
+  // For debugging
   Matrix<double> A_orig = A.get_dense();
-
-  // Copy of 'b' we work with.
-  Matrix<double> b_cpy(b);
-
   uint32_t n = A.get_n();
-  assert(b.rows_ == n);
 
-//  cout << "Original A:" << endl;
-//  cout << A << endl;
-  cout << "Will solve " << b_cpy.cols_ << " linear systems." << endl;
-
-  // TODO(andreib): Update methods to support solving MULTIPLE systems!
-
-  // Perform banded LU factorization
   uint32_t l = A.get_bandwidth();
   uint32_t u = A.get_bandwidth();
   int bw = l + u + 1;
@@ -409,74 +404,68 @@ vector<double> SolveCustom(BandMatrix<double> &A, const Matrix<double> &b) {
       A(i, k) = A(i, k) / A(k, k);
 
       for (uint32_t j = k + 1; j <= min(k + u, n - 1); ++j) {
-        cout << "Doing stuff?" << endl;
         A(i, j) = A(i, j) - A(i, k) * A(k, j);
       }
     }
   }
-//  cout << "LU factorization OK." << endl;
-//  cout << A << endl;
 
-  // TODO(andreib): Test by reconstructing original matrix, derp.
-  // This code just checks correctness
-  vector<double> lower_data;
-  vector<double> upper_data;
-  for(int i = 0; i < n; ++i) {
-    for(int j = 0; j < n; ++j) {
-      if (i > j) {
-        lower_data.push_back(A.get(i, j));
-        upper_data.push_back(0.0);
-      }
-      else {
-        lower_data.push_back(0.0);
-        upper_data.push_back(A.get(i, j));
+  if (check_lu) {
+    vector<double> lower_data;
+    vector<double> upper_data;
+    for (int i = 0; i < n; ++i) {
+      for (int j = 0; j < n; ++j) {
+        if (i > j) {
+          lower_data.push_back(A.get(i, j));
+          upper_data.push_back(0.0);
+        } else {
+          lower_data.push_back(0.0);
+          upper_data.push_back(A.get(i, j));
+        }
       }
     }
+
+    Matrix<double> lower(n, n, lower_data);
+    // Ensure we have the implicit 1's on the diagonal.
+    for (int i = 0; i < n; ++i) {
+      lower(i, i) = 1.0;
+    }
+    Matrix<double> upper(n, n, upper_data);
+    bool all_close = A_orig.all_close(lower * upper);
+    if (!all_close) {
+      throw runtime_error("LU-decomposition is incorrect! Get a refund! ;)");
+    }
   }
+}
 
-  Matrix<double> lower(n, n, lower_data);
-  // Ensure we have the implicit 1's on the diagonal.
-  for(int i = 0; i < n; ++i) {
-    lower(i, i) = 1.0;
-  }
-  Matrix<double> upper(n, n, upper_data);
-//  cout << "Lower:" << endl;
-//  cout << lower << endl;
-//  cout << "Upper:" << endl;
-//  cout << upper << endl;
+/*
+ * Ax = b
+ * LU-decompose A, s.t. A = LU.
+ * LUx = b
+ * Solve with forward substitution:
+ * Lz = b
+ *
+ * Then, using the z, perform the second (back)substitution:
+ * Ux = z
+ */
+/// Solves the given banded linear system in-place using a LU factorization.
+/// Note: Destroys A and b by performing the factorization and substitutions in-place.
+Matrix<double> SolveCustom(BandMatrix<double> &A, Matrix<double> &b, bool check_lu = false) {
+  // TODO(andreib): Update methods to support solving MULTIPLE systems!
+  uint32_t n = A.get_n();
+  assert(b.rows_ == n);
 
-//  Matrix<double> result = lower * upper;
-//  cout << "Reconstruction:" << endl << result << endl;
-  bool all_close = A_orig.all_close(lower * upper);
-  if (! all_close) {
-    throw runtime_error("LU-decomposition is incorrect! Get a refund! ;)");
-  }
+  cout << "Will solve " << b.cols_ << " linear systems." << endl;
+  BandedLUFactorization(A, check_lu);
 
-  /*
-   * Ax = b
-   * LU-decompose A, s.t. A = LU.
-   * LUx = b
-   * Solve with forward substitution:
-   * Lz = b
-   *
-   * Then, using the z, perform the second (back)substitution:
-   * Ux = z
-   */
-
-  Matrix<double> z(b);
   // Perform forward substitution to find intermediate result z.
-  // TODO(andreib): De-constantiy the 1!!
+  Matrix<double> z(b);
+  int bw = A.get_bandwidth();
   for (int i = 0; i < n; ++i) {
-    for(int j = max(0, i - 1); j <= i - 1; ++j) {
-      cout << "Row " << i << ", sub " << j << " dude." << endl;
-      b_cpy(i, 0) = b_cpy(i, 0) - A(i, j) * z(j, 0);
+    for(int j = max(0, i - bw); j <= i - 1; ++j) {
+      b(i, 0) = b(i, 0) - A(i, j) * z(j, 0);
     }
-    z(i, 0) = b_cpy(i, 0); // / A(i, i);  // No divide because lower always has a 1 on the diagonal!
+    z(i, 0) = b(i, 0); // / A(i, i);  // No divide because lower always has a 1 on the diagonal!
   }
-
-//  cout << "Got z:" << endl;
-//  cout << z << endl;
-
 
   // Perform backsubstitution
   // We store our output here and the rhs is z.
@@ -484,27 +473,18 @@ vector<double> SolveCustom(BandMatrix<double> &A, const Matrix<double> &b) {
 
   for (int j = n - 1; j >= 0; --j) {
     x(j, 0) = z(j, 0) / A(j, j);        // the upper matrix has non-ones on diag, so we DO need to divide!
-    for (int i = max(0, j - 1); i <= max(0, j - 1); i++) {
+    for (int i = max(0, j - bw); i <= max(0, j - 1); i++) {
       z(i, 0) = z(i, 0) - A(i, j) * x(j, 0);
     }
-    cout << "Row " << j << " complete." << endl;
   }
 
-  cout << "Backsubst complete." << endl;
-
-
-  vector<double> fin_res;
-  for(int i = 0; i < n; ++i) {
-    fin_res.push_back(x(i, 0));
-  }
-  return fin_res;
-//  return {};
+  return x;
 }
 
 
 /// Solves a linear banded system using the specified method.
 /// We need the (ugly) argc and argv args for the MPI case.
-vector<double> SolveSystem(
+Matrix<double> SolveSystem(
     BandMatrix<double> &A,
     vector<double> &b,
     int argc,
@@ -537,7 +517,7 @@ vector<double> SolveSystem(
     for (int i = 0; i < A.get_n(); ++i) {
       res.push_back(x(i));
     }
-    return res;
+    return ::Matrix<double>(A.get_n(), 1, res);
 #else
     throw runtime_error("Requested Eigen solver, but Eigen support is disabled!")
 #endif
@@ -559,16 +539,23 @@ SplineSolution<double> Solve(const SplineProblem& problem, int argc, char **argv
   BandMatrix<double> A_cpy(A);
   vector<double> u_cpy = u;
   auto c = SolveSystem(A, u, argc, argv, SolverTypes::kCustomSingleThread);
+#ifdef DEBUG_WITH_EIGEN
   auto c_eigen = SolveSystem(A_cpy, u_cpy, argc, argv, SolverTypes::kEigenDense);
   cout << "Eigen solution: " << c_eigen << endl;
   cout << "Our solution:   " << c << endl;
+  if (! c.all_close(c_eigen)) {
+    throw runtime_error("Sanity check failed! Our solution was different from what Eigen computed.");
+  }
+#endif
 
-//  cout << "Plot points:" << endl;
-//  cout << plot_points << endl;
-  cout << "Finished computing stuff." << endl;
+  cout << "Finished computing solution to problem: " << problem.get_full_name() << endl;
 
   // TODO(andreib): Populate this accordingly after computation complete, including ERROR INFO!
-  return SplineSolution<double>(u, c_eigen, problem);
+  vector<double> c_vec;
+  for(int i =0;i<A.get_n();++i) {
+    c_vec.push_back(c(i, 0));
+  }
+  return SplineSolution<double>(u, c_vec, problem);
 }
 
 void Save(const SplineSolution<double> &solution) {
