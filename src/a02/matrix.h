@@ -10,6 +10,9 @@
 #include <iostream>
 #include <vector>
 
+#include "Eigen/Eigen"
+using EMatrix = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>;
+
 using namespace std;
 
 /// A quick and dirty row-major dense matrix class.
@@ -36,7 +39,7 @@ class Matrix {
 
     bool all_close(const Matrix<T> &other) const {
       assert (rows_ == other.rows_ && cols_ == other.cols_);
-      T epsilon = 1e-6;
+      T epsilon = 1e-4;
       for(int i = 0; i < rows_; ++i) {
         for(int j = 0; j < cols_; ++j) {
           if (std::fabs((*this)(i, j) - other(i, j) > epsilon)) {
@@ -47,8 +50,33 @@ class Matrix {
       return true;
     }
 
+    int write_raw_rows(int row_start, int row_end, T *out, int offset) const {
+      int idx = offset;
+      for(int i = row_start; i < row_end; ++i) {
+        for(int j = 0; j < cols_; ++j) {
+          out[idx++] = data_[i * cols_ + j];
+        }
+      }
+      return idx;
+    }
+
+    int write_raw(T *out, int offset) const {
+      return write_raw_rows(0, rows_, out, offset);
+    }
+
+    int set_from(T *raw, int offset = 0) {
+      int cur_offset = offset;
+      for(int i = 0; i < rows_; ++i) {
+        for(int j = 0; j < cols_; ++j) {
+          int idx = i * cols_ + j;
+          data_[idx] = raw[cur_offset++];
+        }
+      }
+      return cur_offset;
+    }
+
  public:
-  const uint32_t rows_, cols_;
+  uint32_t rows_, cols_;
 
  private:
   std::vector<T> data_;
@@ -126,6 +154,19 @@ class BandMatrix {
     return bandwidth_;
   }
 
+  /// Writes the raw data corresponding to the rows in [row_start, row_end) to out, returning the number of elements
+  /// written. Note that this also writes padding elements.
+  int write_raw_rows(int row_start, int row_end, T *out, int offset) const {
+    int idx = offset;
+    int effective = bandwidth_ * 2 + 1;
+    for(int i = row_start; i < row_end; ++i) {
+      for (int raw_col = 0; raw_col < effective; ++raw_col) {
+        out[idx++] = data_[i * effective + raw_col];
+      }
+    }
+    return idx;
+  }
+
  private:
   uint32_t bandwidth_;
   uint32_t n_;
@@ -140,13 +181,49 @@ class BandMatrix {
 
 bool all_close(const std::vector<double> &left, const std::vector<double> &right) {
   double epsilon = 1e-6;
-  for(int i = 0; i < left.size(); ++i) {
+  for(uint32_t i = 0; i < left.size(); ++i) {
     if (fabs(left[i] - right[i]) > epsilon) {
       return false;
     }
   }
   return true;
 }
+
+EMatrix ToEigen(const Matrix<double> &mat) {
+  EMatrix res;
+  res.resize(mat.rows_, mat.cols_);
+
+  for (uint32_t i = 0; i < mat.rows_; ++i) {
+    for (uint32_t j = 0; j < mat.cols_; ++j) {
+      res(i, j) = mat(i, j);
+    }
+  }
+  return res;
+};
+
+Matrix<double> ToMatrix(const EMatrix &eigen) {
+  vector<double> data;
+  for(int i = 0; i < eigen.rows(); ++i) {
+    for(int j = 0; j < eigen.cols(); ++j) {
+      data.push_back(eigen(i, j));
+    }
+  }
+  return Matrix<double>(eigen.rows(), eigen.cols(), data);
+}
+
+EMatrix ToEigen(const BandMatrix<double> &mat) {
+  EMatrix res;
+  res.resize(mat.get_n(), mat.get_n());
+
+  for (int i = 0; i < mat.get_n(); ++i) {
+    for (int j = 0; j < mat.get_n(); ++j) {
+      res(i, j) = mat.get(i, j);
+    }
+  }
+  return res;
+};
+
+
 
 template<typename T>
 Matrix<T> operator*(const Matrix<T> &left, const Matrix<T> &right) {
@@ -162,6 +239,34 @@ Matrix<T> operator*(const Matrix<T> &left, const Matrix<T> &right) {
       for(int k = 0; k < left.cols_; ++k) {
         result(i, j) += left(i, k) * right(k, j);
       }
+    }
+  }
+  return result;
+}
+
+template<typename T>
+Matrix<T> operator-(const Matrix<T> &left, const Matrix<T> &right) {
+  assert(left.cols_ == right.cols_);
+  assert(left.rows_ == right.rows_);
+
+  Matrix<T> result(left);
+  for(int i = 0; i < left.rows_; ++i) {
+    for(int j = 0; j < left.cols_; ++j) {
+        result(i, j) -= right(i, j);
+    }
+  }
+  return result;
+}
+
+template<typename T>
+Matrix<T> operator+(const Matrix<T> &left, const Matrix<T> &right) {
+  assert(left.cols_ == right.cols_);
+  assert(left.rows_ == right.rows_);
+
+  Matrix<T> result(left);
+  for(int i = 0; i < left.rows_; ++i) {
+    for(int j = 0; j < left.cols_; ++j) {
+      result(i, j) += right(i, j);
     }
   }
   return result;

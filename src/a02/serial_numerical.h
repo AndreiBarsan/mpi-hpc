@@ -54,7 +54,7 @@ void BandedLUFactorization(BandMatrix<double> &A, bool check_lu) {
 
     Matrix<double> lower(n, n, lower_data);
     // Ensure we have the implicit 1's on the diagonal.
-    for (int i = 0; i < n; ++i) {
+    for (uint32_t i = 0; i < n; ++i) {
       lower(i, i) = 1.0;
     }
     Matrix<double> upper(n, n, upper_data);
@@ -65,60 +65,64 @@ void BandedLUFactorization(BandMatrix<double> &A, bool check_lu) {
   }
 }
 
-/// Solves the given banded linear system in-place using a LU factorization.
-/// Note: Destroys A and b by performing the factorization and substitutions in-place.
-Matrix<double> SolveSerial(BandMatrix<double> &A, Matrix<double> &b, bool check_lu = false) {
-  /*
-   * Ax = b
-   * LU-decompose A, s.t. A = LU.
-   * LUx = b
-   * Solve with forward substitution:
-   * Lz = b
-   *
-   * Then, using the z, perform the second (back)substitution:
-   * Ux = z
-   */
-
-  // TODO(andreib): Update methods to support solving MULTIPLE systems!
-  unsigned int n = A.get_n();
-  assert(b.rows_ == n);
-
-  int n_systems = b.cols_;
-  cout << "Will solve " << n_systems << " linear systems." << endl;
-
-  // Start by factorizing A in-place.
-  BandedLUFactorization(A, check_lu);
+/// Solves the system given A, a matrix assumed to have already been LU-decomposed in-place.
+Matrix<double> SolveDecomposed(const BandMatrix<double> &A_decomposed, Matrix<double> &B) {
+  int n_systems = B.cols_;
+  unsigned int n = A_decomposed.get_n();
 
   // Perform forward substitution to find intermediate result z.
-  Matrix<double> z(b);
-  int bw = A.get_bandwidth();
+  Matrix<double> z(B);
+  int bw = A_decomposed.get_bandwidth();
   for (int i = 0; i < n; ++i) {
     for(int j = max(0, i - bw); j <= i - 1; ++j) {
       // Solve all linear systems at the same time.
       for(int k = 0; k < n_systems; ++k) {
-        b(i, k) = b(i, k) - A(i, j) * z(j, k);
+        B(i, k) = B(i, k) - A_decomposed.get(i, j) * z(j, k);
       }
     }
 
     for(int k = 0; k < n_systems; ++k) {
-      z(i, k) = b(i, k); // / A(i, i);  // No divide because lower always has a 1 on the diagonal!
+      z(i, k) = B(i, k); // / A(i, i);  // No divide because lower always has a 1 on the diagonal!
     }
   }
 
-  // Perform backsubstitution
+  // Perform back substitution
   // We store our output here and the rhs is z.
-  Matrix<double> x(b);
-
+  Matrix<double> x(B);
   for (int j = n - 1; j >= 0; --j) {
     for(int k = 0; k < n_systems; ++k) {
-      x(j, k) = z(j, k) / A(j, j);        // the upper matrix has non-ones on diag, so we DO need to divide!
+      // the upper matrix has non-ones on diag, so we DO need to divide!
+      x(j, k) = z(j, k) / A_decomposed.get(j, j);
       for (int i = max(0, j - bw); i <= max(0, j - 1); i++) {
-        z(i, k) = z(i, k) - A(i, j) * x(j, k);
+        z(i, k) = z(i, k) - A_decomposed.get(i, j) * x(j, k);
       }
     }
   }
-
   return x;
+}
+
+
+/// Solves the given banded linear systems in-place using a LU factorization.
+///
+/// \param A [n x n] coefficient matrix.
+/// \param B [n x k] right-hand side (solves k systems at the same time).
+/// \param check_lu Whether to validate the result of the LU factorization.
+/// \return An [n x k] matrix with the k n-dimensional solution vectors.
+///
+/// Note: Destroys A and b by performing the factorization and substitutions in-place.
+/// High-level overview of the solver code:
+///     1. Want to solve: AX = B
+///     2. LU decompose A: A = LU
+///     3. System is now: LUX = B
+///     4. Let UX := Z and solve LZ = B for Z with forward substitution.
+///     5. Solve UX = Z for X with backward substitution.
+///     6. Return the final solutions X.
+Matrix<double> SolveSerial(BandMatrix<double> &A, Matrix<double> &B, bool check_lu = false) {
+  assert(B.rows_ == A.get_n());
+  cout << "Will solve " << B.cols_ << " linear systems." << endl;
+  // Start by factorizing A in-place.
+  BandedLUFactorization(A, check_lu);
+  return SolveDecomposed(A, B);
 }
 
 #include "src/a02/matrix.h"

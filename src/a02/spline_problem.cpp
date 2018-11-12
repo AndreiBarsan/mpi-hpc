@@ -199,14 +199,7 @@ uint32_t min(uint32_t a, uint32_t b) {
 }
 
 /// Solves a linear banded system using the specified method.
-/// We need the (ugly) argc and argv args for the MPI case.
-Matrix<double> SolveSystem(
-    BandMatrix<double> &A,
-    vector<double> &b,
-    int argc,
-    char **argv,
-    SolverTypes method) {
-
+Matrix<double> SolveSystem(BandMatrix<double> &A, vector<double> &b, SolverTypes method) {
   if (method == SolverTypes::kEigenDense) {
 #ifdef DEBUG_WITH_EIGEN
     using namespace Eigen;
@@ -241,14 +234,14 @@ Matrix<double> SolveSystem(
   }
   else if (method == SolverTypes::kPartitionTwo) {
     Matrix<double> b_mat(A.get_n(), 1, b);
-    return SolveParallel(A, b_mat, argc, argv);
+    return SolveParallel(A, b_mat);
   }
   else {
     throw runtime_error("Unsupported solver type.");
   }
 }
 
-SplineSolution<double> Solve(const SplineProblem& problem, SolverTypes solver, int argc, char **argv) {
+SplineSolution<double> Solve(const SplineProblem& problem, SolverTypes solver) {
   MPI_SETUP;
 
   auto A = problem.get_A();
@@ -257,15 +250,18 @@ SplineSolution<double> Solve(const SplineProblem& problem, SolverTypes solver, i
 
   BandMatrix<double> A_cpy(A);
   vector<double> u_cpy = u;
-  auto c = SolveSystem(A, u, argc, argv, solver);
+  auto c = SolveSystem(A, u, solver);
   MASTER {
 #ifdef DEBUG_WITH_EIGEN
     // Make the master node check the solution using a built-in solver, if it is available.
-    auto c_eigen = SolveSystem(A_cpy, u_cpy, argc, argv, SolverTypes::kEigenDense);
+    auto c_eigen = SolveSystem(A_cpy, u_cpy, SolverTypes::kEigenDense);
     cout << "Eigen solution: " << c_eigen << endl;
     cout << "Our solution:   " << c << endl;
     if (!c.all_close(c_eigen)) {
       throw runtime_error("Sanity check failed! Our solution was different from what Eigen computed.");
+    }
+    else {
+      cout << "[OK] I computed the solution again in a naive way with Eigen, and the result matched!" << endl;
     }
 #endif
     cout << "Finished computing solution to problem: " << problem.get_full_name() << endl;
@@ -273,7 +269,7 @@ SplineSolution<double> Solve(const SplineProblem& problem, SolverTypes solver, i
 
   // TODO(andreib): Populate this accordingly after computation complete, including ERROR INFO!
   vector<double> c_vec;
-  for(int i =0;i<A.get_n();++i) {
+  for(uint32_t i = 0;i < A.get_n(); ++i) {
     c_vec.push_back(c(i, 0));
   }
   return SplineSolution<double>(u, c_vec, problem);
@@ -369,29 +365,65 @@ void TestMultiRHS() {
     1, 0, 0.25,
   });
 
+  // If we pad the system naively, do we get the same solution?
+  BandMatrix<double> A_pad(10, {
+      0, 0, 1, 0, 0,
+      0, 0, 1, 0, 0,
+      0, 0, 2, 0, 0,
+      0, 0, 3, 0, 0,
+      0, 0, 4, 0, 0,
+      0, 0, 5, 0, 0,
+      0, 0, 6, 0, 0,
+      0, 0, 7, 0, 0,
+      0, 0, 8, 0, 0,
+      0, 0, 1, 0, 0,
+  }, 2);
+  Matrix<double> B_pad(10, 3, {
+      0, 0, 0,
+      1, 0, 2,
+      2, 0, 2,
+      3, 0, 2,
+      4, 0, 2,
+      5, 0, 2,
+      6, 0, 2,
+      7, 0, 2,
+      8, 0, 2,
+      0, 0, 0,
+  });
+
   assert (expected_x.all_close(x));
   cout << "Multi-system solver seems to be OK." << endl;
+
+  auto x_pad = SolveSerial(A_pad, B_pad, true);
+  cout << x << endl;
+  cout << x_pad << endl;
 }
 
 int SplineExperiment(int argc, char **argv) {
   MPI_Init(&argc, &argv);
   MPI_SETUP;
   vector<int> ns = {30, 62, 126, 254, 510};
-//  vector<int> ns = {30}; //, 62, 126, 254, 510};
+//  vector<int> ns = {30}; //, 62}; //, 126, 254, 510};
 
-//  SolverTypes solver = SolverTypes::kPartitionTwo;
-  SolverTypes solver = SolverTypes::kCustomSingleThread;
+  SolverTypes solver = SolverTypes::kPartitionTwo;
+//  SolverTypes solver = SolverTypes::kCustomSingleThread;
 //  MASTER {
 //    TestMultiRHS();
 //  }
+//  MPI_Finalize();
+//  return 0;
 
   for (int n : ns) {
     // For both problems, 'Solve' generates the problem matrices and vectors, applies the partitioning to compute the
     // solution, computes maximum errors within each processor's subintervals, and the global errors over all nodes
     // and over 3n+1 points.
     auto problems = {BuildFirstProblem(n), BuildSecondProblem(n), BuildCustomProblem(n)};
+//    auto problems = {BuildSecondProblem(n)};
     for (const auto &problem : problems) {
-      auto solution = Solve(problem, solver, argc, argv);
+      MASTER {
+        cout << endl << "Solving " << problem.get_full_name() << "..." << endl << endl << endl;
+      }
+      auto solution = Solve(problem, solver);
       MASTER {
         Save(solution, FLAGS_out_dir);
       }
