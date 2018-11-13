@@ -304,14 +304,10 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
       MPI_Send(send_buffer.get(), count, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
     }
   }
-  MPI_Barrier(MPI_COMM_WORLD);
-  cout << "Sends ok..." << endl;
 
   MPI_Status status;
   // Receive our chunk of A, plus the corresponding data from b.
   MPI_Recv(recv_buffer.get(), 3 * q + q, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
-
-  cout << "Recvs ok..." << endl;
 
   // We got our data, now let's assemble our matrices. We start with Ai1, which is still a banded tridiagonal matrix
   // of dimensions (q - b) x (q - b).
@@ -353,8 +349,8 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
   for(int i = 3 * q + q - beta; i < 3 * q + q; ++i) {
     b_i_2(i - 3 * q + beta - q, 0) = recv_buffer[i];
   }
-  cout << "Debug PP2 in " << local_id << ", b_i_2 = " << b_i_2 << endl;
-  cout << "Debug PP2 in " << local_id << ", B_i_2 = " << B_i_2 << endl;
+//  cout << "Debug PP2 in " << local_id << ", b_i_2 = " << b_i_2 << endl;
+//  cout << "Debug PP2 in " << local_id << ", B_i_2 = " << B_i_2 << endl;
 
 //  MPI_Barrier(MPI_COMM_WORLD);
 //  cout << "b setup ok..." << endl;
@@ -370,13 +366,13 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
     C_i_1(0, beta - 1) = recv_buffer[0];
   }
 
-  stringstream ss;
-  ss << A_i_1 << endl;
-  cout << "A_i_1 for " << local_id << ":\n" << ss.str() << endl;
-
-  ss = stringstream();
-  ss << A_i_4 << endl;
-  cout << "A_i_4 for " << local_id << ":\n" << ss.str() << endl;
+//  stringstream ss;
+//  ss << A_i_1 << endl;
+//  cout << "A_i_1 for " << local_id << ":\n" << ss.str() << endl;
+//
+//  ss = stringstream();
+//  ss << A_i_4 << endl;
+//  cout << "A_i_4 for " << local_id << ":\n" << ss.str() << endl;
 
   // Step 1: LU factor in-place Ai1 in each processor i.
   BandedLUFactorization(A_i_1, true);
@@ -393,8 +389,8 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
 
   // Step 4: Fwd/backsub equation 4 in each node.
   auto b_i_1_prime = SolveDecomposed(A_i_1, b_i_1);
-  cout << "Debug PP2 in " << local_id << ", b_i_1' = " << b_i_1_prime << endl;
-  cout << "Debug PP2 in " << local_id << ", A_i_3  = " << A_i_3 << endl;
+//  cout << "Debug PP2 in " << local_id << ", b_i_1' = " << b_i_1_prime << endl;
+//  cout << "Debug PP2 in " << local_id << ", A_i_3  = " << A_i_3 << endl;
 
   // Step 4.5: Send C_i_1_prime back from all nodes except first. (Which doesn't have a proper C_i_1_prime anyway!)
   int C_i_1_prime_els = C_i_1_prime.rows_ * C_i_1_prime.cols_;
@@ -421,7 +417,7 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
   // Debug to compare with eigen method.
   stringstream homer;
   homer << A_i_4_prime;
-  cout << "Debug PP2 A_i_4_prime on " << local_id << ": "<< homer.str() << endl;
+//  cout << "Debug PP2 A_i_4_prime on " << local_id << ": "<< homer.str() << endl;
 
   // Step 5.5: Send A_i2 back from all but first proc. Recv A_i2 from all but last proc.
   if (local_id > 0) {
@@ -466,13 +462,13 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
     MPI_Recv(recv_buffer.get(), b_i_1_prime.rows_, MPI_DOUBLE, local_id + 1, 0, MPI_COMM_WORLD, &status);
     b_i_plus_1_1_prime.set_from(recv_buffer.get());
 
-    cout << "Debug PP2 " << local_id << ", b_i+1_1' = " << b_i_plus_1_1_prime << endl;
+//    cout << "Debug PP2 " << local_id << ", b_i+1_1' = " << b_i_plus_1_1_prime << endl;
     b_i_2_prime = b_i_2 - A_i_3 * b_i_1_prime - B_i_1 * b_i_plus_1_1_prime;
   }
   else {
     b_i_2_prime = b_i_2 - A_i_3 * b_i_1_prime;
   }
-  cout << "Debug PP2 " << local_id << ", b_i_2' = " << b_i_2_prime << endl;
+//  cout << "Debug PP2 " << local_id << ", b_i_2' = " << b_i_2_prime << endl;
 
   // Step 9: Send bits back to node 0 to form the reduced system, which should now be much smaller!
   int count = 0;
@@ -653,10 +649,10 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
 
 
 Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
-  auto debug_sol = SolveParallelDebug(A, b);
+//  auto debug_sol = SolveParallelDebug(A, b);
   auto proper_sol = SolveParallelMain(A, b);
 
-  cout << "Debug solution with Eigen serial partitioning:" << debug_sol << endl;
+//  cout << "Debug solution with Eigen serial partitioning:" << debug_sol << endl;
   cout << "Proper solution:                              " << proper_sol << endl;
   return proper_sol;
 }

@@ -402,23 +402,18 @@ void TestMultiRHS() {
 int SplineExperiment(int argc, char **argv) {
   MPI_Init(&argc, &argv);
   MPI_SETUP;
-//  vector<int> ns = {30, 62, 126, 254, 510};
-  vector<int> ns = {30}; //, 62}; //, 126, 254, 510};
+  vector<int> ns = {30, 62, 126, 254, 510};
+//  vector<int> ns = {30}; //, 62}; //, 126, 254, 510};
 
   SolverTypes solver = SolverTypes::kPartitionTwo;
 //  SolverTypes solver = SolverTypes::kCustomSingleThread;
-//  MASTER {
-//    TestMultiRHS();
-//  }
-//  MPI_Finalize();
-//  return 0;
 
   for (int n : ns) {
     // For both problems, 'Solve' generates the problem matrices and vectors, applies the partitioning to compute the
     // solution, computes maximum errors within each processor's subintervals, and the global errors over all nodes
     // and over 3n+1 points.
-//    auto problems = {BuildFirstProblem(n), BuildSecondProblem(n), BuildCustomProblem(n)};
-    auto problems = {BuildSecondProblem(n)};
+    auto problems = {BuildFirstProblem(n), BuildSecondProblem(n), BuildCustomProblem(n)};
+//    auto problems = {BuildSecondProblem(n)};
     for (const auto &problem : problems) {
       MASTER {
         cout << endl << "Solving " << problem.get_full_name() << "..." << endl << endl << endl;
