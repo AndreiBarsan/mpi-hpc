@@ -7,12 +7,14 @@
 
 #include <cassert>
 #include <cstdint>
+#include <iomanip>
 #include <iostream>
+#include <memory>
 #include <vector>
 
 #include "Eigen/Eigen"
-using EMatrix = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>;
 
+using EMatrix = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>;
 using namespace std;
 
 /// A quick and dirty row-major dense matrix class.
@@ -60,8 +62,16 @@ class Matrix {
       return idx;
     }
 
+    int write_raw(unique_ptr<T[]> &p, int offset) const {
+      return write_raw(p.get(), offset);
+    }
+
     int write_raw(T *out, int offset) const {
       return write_raw_rows(0, rows_, out, offset);
+    }
+
+    int set_from(unique_ptr<T[]> &p, int offset = 0) {
+      return set_from(p.get(), offset);
     }
 
     int set_from(T *raw, int offset = 0) {
@@ -279,9 +289,9 @@ std::ostream& operator<<(std::ostream& out, const BandMatrix<T> &m) {
 
   for(int i = 0; i < n; ++i) {
     for(int j = 0; j < n; ++j) {
-      out << m.get(i, j) << " ";
+      out << setw(6) << setprecision(4) << m.get(i, j) << " ";
     }
-    out << std::endl;
+    out << "\n";
   }
 
   return out;
@@ -291,11 +301,14 @@ template<typename T>
 std::ostream& operator<<(std::ostream& out, const Matrix<T> &m) {
   for(int i = 0; i < m.rows_; ++i) {
     for(int j = 0; j < m.cols_; ++j) {
-      out << m(i, j) << ", ";
+      out << setw(6) << setprecision(4) <<  m(i, j);
+      if (j != m.cols_ - 1 || m.cols_ == 1) {
+        out << ", ";
+      }
     }
     // Display column vectors in a row for cleaner outputs.
     if (m.cols_ != 1) {
-      out << std::endl;
+      out << "\n";
     }
   }
 
