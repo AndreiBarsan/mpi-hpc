@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.5)
 project(hpsc)
 
+set(CMAKE_CXX_STANDARD 17)
+
 # Requires Open MPI (or equivalent) to be installed. On macOS, you can simply use `brew install openmpi` for this.
 find_package(MPI REQUIRED)
 
@@ -12,7 +14,7 @@ find_package(Eigen3 REQUIRED NO_MODULE)
 include_directories(SYSTEM ${MPI_INCLUDE_PATH} .)
 
 set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -msse3 -Wall -Wextra -Wno-reorder") # -fopenmp")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -msse3 -Wall -Wextra -Wno-reorder -std=c++17")
 
 # Assignment 1 Executables
 set(COMMON_SOURCES src/common/utils.cpp)
@@ -27,13 +29,13 @@ string(STRIP "${MPI_CXX_LIBRARIES}" MPI_CXX_LIBRARIES)
 string(STRIP "${MPI_CXX_LINK_FLAGS}" MPI_CXX_LINK_FLAGS)
 
 target_compile_options(globsum PRIVATE ${MPI_CXX_COMPILE_FLAGS})
-target_link_libraries(globsum ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags stdc++fs)
+target_link_libraries(globsum ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags)#stdc++fs)
 
 target_compile_options(fanout PRIVATE ${MPI_CXX_COMPILE_FLAGS})
-target_link_libraries(fanout ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags stdc++fs)
+target_link_libraries(fanout ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags)#stdc++fs)
 
 target_compile_options(ring PRIVATE ${MPI_CXX_COMPILE_FLAGS})
-target_link_libraries(ring ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags stdc++fs)
+target_link_libraries(ring ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags)# stdc++fs)
 
 target_compile_options(spline_problem PRIVATE ${MPI_CXX_COMPILE_FLAGS})
-target_link_libraries(spline_problem ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags Eigen3::Eigen stdc++fs)
+target_link_libraries(spline_problem ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags Eigen3::Eigen) # stdc++fs)

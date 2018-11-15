@@ -1,8 +1,11 @@
 #include "utils.h"
 
-#include <experimental/filesystem>
+// Not supported (yet) on MacOS without additional hacks.
+//#include <experimental/filesystem>
+
 #include <memory>
 #include <iomanip>
+
 
 using namespace std;
 
@@ -82,7 +85,9 @@ string GetDate() {
 string GetCWD() {
   // Seriously, I am sick and tired of writing hacky platform-specific code.
   // I am VERY VERY happy #include <filesystem> will be a thing starting with C++17.
-  return std::experimental::filesystem::current_path();
+//  return std::experimental::filesystem::current_path();
+  // HACK!
+ return "/Users/andrei/work/hpsc/cmake-build-debug/";
 }
 
 int Flip(unsigned int i, unsigned int n) {

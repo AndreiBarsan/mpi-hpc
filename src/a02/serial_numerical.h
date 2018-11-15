@@ -40,8 +40,8 @@ void BandedLUFactorization(BandMatrix<double> &A, bool check_lu) {
   if (check_lu) {
     vector<double> lower_data;
     vector<double> upper_data;
-    for (int i = 0; i < n; ++i) {
-      for (int j = 0; j < n; ++j) {
+    for (uint32_t i = 0; i < n; ++i) {
+      for (uint32_t j = 0; j < n; ++j) {
         if (i > j) {
           lower_data.push_back(A.get(i, j));
           upper_data.push_back(0.0);

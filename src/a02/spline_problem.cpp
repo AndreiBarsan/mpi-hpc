@@ -290,7 +290,7 @@ void Save(const SplineSolution<double> &solution, const string &out_dir) {
 
   if (! IsDir(out_dir)) {
     if (mkdir(out_dir.c_str(), 0755) == -1) {
-      throw runtime_error(Format("Coult not create output dir: %s from working dir %s.", out_dir.c_str(),
+      throw runtime_error(Format("Could not create output dir: %s from working dir %s.", out_dir.c_str(),
                                  GetCWD().c_str()));
     }
     else {
@@ -403,7 +403,7 @@ int SplineExperiment(int argc, char **argv) {
   MPI_Init(&argc, &argv);
   MPI_SETUP;
   vector<int> ns = {30, 62, 126, 254, 510};
-//  vector<int> ns = {30}; //, 62}; //, 126, 254, 510};
+//  vector<int> ns = {510}; //, 62}; //, 126, 254, 510};
 
   SolverTypes solver = SolverTypes::kPartitionTwo;
 //  SolverTypes solver = SolverTypes::kCustomSingleThread;

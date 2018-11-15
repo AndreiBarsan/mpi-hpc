@@ -17,6 +17,7 @@
 #define MASTER if (0 == local_id)
 
 // TODO(andreib): Remove all explicit barriers.
+// TODO(andreib): Allocate less memory for comunication buffers; currently * 20 is excessive!
 // Known to be ALWAYS zero: B_i2, C_i2   <---  TODO(andreib): Use this!!
 // TODO(andreib): Implement low-tri/up-tri matrix class to improve efficiency of certain multiplications.
 
@@ -154,7 +155,7 @@ Matrix<double> SolveParallelDebug(const BandMatrix<double> &A_raw, const Matrix<
     auto aux3 = A_1_factored.solve(b_1[i]);
     b_1[i] = aux3;
 
-    cout << "Solves ok" << endl;
+//    cout << "Solves ok" << endl;
 
 //    cout << "Debug Eig in " << i << ", b_i_1' = " << b_1[i] << endl;
 //    cout << "Debug Eig in " << i << ", A_i_3  = " << A_3[i] << endl;
@@ -186,7 +187,7 @@ Matrix<double> SolveParallelDebug(const BandMatrix<double> &A_raw, const Matrix<
     if (i > 0) {    // since no block C in first processor
       C_2[i] = C_2[i] - A_3[i] * C_1[i];
     }
-    cout << "Step 7" << endl;
+//    cout << "Step 7" << endl;
   }
 
   for(int i = 0; i < n_procs; ++i) {
@@ -198,7 +199,7 @@ Matrix<double> SolveParallelDebug(const BandMatrix<double> &A_raw, const Matrix<
       b_2[i] = b_2[i] - A_3[i] * b_1[i];
     }
 
-    cout << "Debug Eig in " << i << ", b_i_2 = " << b_2[i] << endl;
+//    cout << "Debug Eig in " << i << ", b_i_2 = " << b_2[i] << endl;
   }
 
 
@@ -234,10 +235,9 @@ Matrix<double> SolveParallelDebug(const BandMatrix<double> &A_raw, const Matrix<
     }
   }
 
-
-//  cout << "We reached the end. Reduced system:" << endl;
-//  cout << A_red << endl;
-//  cout << b_red << endl;
+  cout << "[Eig] We reached the end. Reduced system:" << endl;
+  cout << "[Eig] " << A_red << endl;
+  cout << "[Eig] " << b_red << endl;
 
   EMatrix x_all_2 = A_red.fullPivLu().solve(b_red);
   cout << "Solution to reduced system (part of full solution):" << endl;
@@ -278,13 +278,14 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
   MPI_SETUP;
   uint32_t n = A.get_n();
   uint32_t q = static_cast<uint32_t>(n / n_procs);
-  uint32_t beta = 2 * A.get_bandwidth() + 1;
-  // Validate the assumption that n_procs perfectly divides n.
-  assert(q * n_procs == n);
+  uint32_t beta = 2 * A.get_bandwidth() + 1;    // The effective bandwidth of the matrix.
+  assert(q * n_procs == n);                     // Validate the assumption that n_procs perfectly divides n.
+  MPI_Request send_request;                     // Used in asynchronous sends.
+  MPI_Status status;
 
   // Note: the make_unique<T[]> support is a C++14 thing.
-  auto send_buffer = make_unique<double[]>(A.get_n() * A.get_bandwidth() * 2);
-  auto recv_buffer = make_unique<double[]>(A.get_n() * A.get_bandwidth() * 2);
+  auto send_buffer = make_unique<double[]>(A.get_n() * A.get_bandwidth() * 20);
+  auto recv_buffer = make_unique<double[]>(A.get_n() * A.get_bandwidth() * 20);
 
   MASTER {
     // Node 0 is considered the master node. We assume it is the only node which originally has the full A and b,
@@ -301,13 +302,35 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
       count = b.write_raw_rows(i * q, (i + 1) * q, send_buffer.get(), count);
       assert (count == (q * 3) + q);
 
-      MPI_Send(send_buffer.get(), count, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
+
+      if (i != 0) {
+        MPI_Send(send_buffer.get(), count, MPI_DOUBLE, i, 0, MPI_COMM_WORLD); //, &send_request);
+      }
+      else {
+        for(int i = 0;i<count;++i) {
+          recv_buffer.get()[i] = send_buffer.get()[i];
+        }
+
+      }
+//      if (local_id != 0) {
+//        // XXX: explain this
+//        MPI_Wait(&send_request, &status);
+//      }
     }
   }
+//  cout << local_id << " reached barrier OK." << endl;
+////  MPI_Barrier(MPI_COMM_WORLD);
+//  cout << local_id << " passed barrier OK." << endl;
 
-  MPI_Status status;
+//  if (local_id == 0) {
+//    // XXX: explain this
+//    MPI_Wait(&send_request, &status);
+//  }
+
   // Receive our chunk of A, plus the corresponding data from b.
-  MPI_Recv(recv_buffer.get(), 3 * q + q, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
+  if (local_id != 0) {
+    MPI_Recv(recv_buffer.get(), 3 * q + q, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
+  }
 
   // We got our data, now let's assemble our matrices. We start with Ai1, which is still a banded tridiagonal matrix
   // of dimensions (q - b) x (q - b).
@@ -349,13 +372,11 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
   for(int i = 3 * q + q - beta; i < 3 * q + q; ++i) {
     b_i_2(i - 3 * q + beta - q, 0) = recv_buffer[i];
   }
-//  cout << "Debug PP2 in " << local_id << ", b_i_2 = " << b_i_2 << endl;
-//  cout << "Debug PP2 in " << local_id << ", B_i_2 = " << B_i_2 << endl;
+  cout << "Debug PP2 in " << local_id << ", b_i_2 = " << b_i_2 << endl;
+  cout << "Debug PP2 in " << local_id << ", B_i_2 = " << B_i_2 << endl;
 
 //  MPI_Barrier(MPI_COMM_WORLD);
 //  cout << "b setup ok..." << endl;
-
-  // TODO(andreib): Consider asserting that you get the right thing back if you put everything together in A.
 
   BandMatrix<double> A_i_1(static_cast<uint32_t>(q - beta), A_i_1_data);
   BandMatrix<double> A_i_4(static_cast<uint32_t>(beta), A_i_4_data);
@@ -366,13 +387,13 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
     C_i_1(0, beta - 1) = recv_buffer[0];
   }
 
-//  stringstream ss;
-//  ss << A_i_1 << endl;
-//  cout << "A_i_1 for " << local_id << ":\n" << ss.str() << endl;
+  stringstream ss;
+  ss << A_i_1 << endl;
+  cout << "A_i_1 for " << local_id << ":\n" << ss.str() << endl;
 //
-//  ss = stringstream();
-//  ss << A_i_4 << endl;
-//  cout << "A_i_4 for " << local_id << ":\n" << ss.str() << endl;
+  ss = stringstream();
+  ss << A_i_4 << endl;
+  cout << "A_i_4 for " << local_id << ":\n" << ss.str() << endl;
 
   // Step 1: LU factor in-place Ai1 in each processor i.
   BandedLUFactorization(A_i_1, true);
@@ -415,8 +436,8 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
   }
 
   // Debug to compare with eigen method.
-  stringstream homer;
-  homer << A_i_4_prime;
+//  stringstream homer;
+//  homer << A_i_4_prime;
 //  cout << "Debug PP2 A_i_4_prime on " << local_id << ": "<< homer.str() << endl;
 
   // Step 5.5: Send A_i2 back from all but first proc. Recv A_i2 from all but last proc.
@@ -450,7 +471,7 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
   // Step 8: Do data transfer (send chunks of b_i,1' back) then appropriate operation branch.
   if (local_id > 0) {
     // Send b_i_1_prime back.
-    int count = b_i_1_prime.write_raw(send_buffer.get(), 0);
+    uint32_t count = b_i_1_prime.write_raw(send_buffer.get(), 0);
     assert(count == b_i_1_prime.rows_);
 
     MPI_Send(send_buffer.get(), count, MPI_DOUBLE, local_id - 1, 0, MPI_COMM_WORLD);
@@ -492,8 +513,7 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
   assert(count - old_count == b_i_2_prime.rows_);
 
   cout << "Will make primary send, count = " << count << "." << endl;
-  MPI_Send(send_buffer.get(), count, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
-  MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Isend(send_buffer.get(), count, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &send_request);
 
   MASTER {
     // TODO(andreib): Store reduced A as banded matrix, bandwidth 2 * beta.
@@ -501,7 +521,7 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
     Matrix<double> reduced_b(n_procs * beta, 1, Zeros(n_procs * beta));
 
     for (int i = 0; i < n_procs; ++i) {
-      // TODO(andreib): Make this generic properly!!
+      // TODO(andreib): Make this generic properly!! (currently only supports 4 cpus!!)
       if (i == 0 || i == 3) {
         count = 21;
       }
@@ -513,7 +533,7 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
 
       if(i > 0) {
         cur_offset = C_i_2_prime.set_from(recv_buffer.get(), cur_offset);
-        cout << "i = " << i << "; cur offset = " << cur_offset << endl;
+//        cout << "i = " << i << "; cur offset = " << cur_offset << endl;
       }
 
       cur_offset = A_i_4_prime.set_from(recv_buffer.get(), cur_offset);
@@ -564,16 +584,17 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
     BandMatrix<double> reduced_A_banded(reduced_A.rows_, band_data);    // TODO ensure right bandwidth
     cout << reduced_A_banded << endl;
 
+    // Solve reduced system on the MASTER node.
     auto x_i_2_all = SolveSerial(reduced_A_banded, reduced_b, true);
 
-    cout << "Part of solution: " << x_i_2_all << endl;
+//    cout << "[PP2] Part of solution: " << x_i_2_all << endl;
 
     // Send x_2 chunks to all nodes so they can compute the x_1 chunks.
     for(int i = 0; i < n_procs; ++i) {
       for(int j = 0; j < beta; ++j) {
         send_buffer[j] = x_i_2_all(i * beta + j, 0);
       }
-      MPI_Send(send_buffer.get(), beta, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
+      MPI_Isend(send_buffer.get(), beta, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &send_request);
     }
   }
 
@@ -609,7 +630,7 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
   // Ok, now send all x_1's to the master node, 0.
   count = x_i_1.write_raw(send_buffer, 0);
   x_i_2.write_raw(send_buffer, count);
-  MPI_Send(send_buffer.get(), q, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+  MPI_Isend(send_buffer.get(), q, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &send_request);
 
   Matrix<double> x_all(n, 1, Zeros(n));
   MASTER {
@@ -621,39 +642,27 @@ Matrix<double> SolveParallelMain(BandMatrix<double> &A, Matrix<double> &b) {
         idx = i * q + j;
         x_all(idx, 0) = recv_buffer[j];
       }
-//      for(int j = 0; j < beta; ++j) {
-//        idx = i * q + q - beta + j;
-//        x_all(idx, 0) = x_i_2_all(i * beta + j, 0);
-////        cout << "Setting idx " << idx << endl;
-////        cout << "?? " << x_i_2(j, 0) << endl;
-//      }
     }
 
-//    cout << "x_all: " << x_all << endl;
     x_all.write_raw(send_buffer, 0);
   }
 
+  // Broadcast the final solution to all nodes so it can be returned.
   MPI_Bcast(send_buffer.get(), n, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
   x_all.set_from(send_buffer, 0);
-
-  cout << "Post bcast, local id = " << local_id << ": " << x_all << endl;
-
   return x_all;
-
-//  MASTER {
-//    cout << "Actually just doing it on main processor for debug." << endl;
-//  };
-//  return SolveSerial(A, b, true);
 }
 
 
 Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
-//  auto debug_sol = SolveParallelDebug(A, b);
+  MPI_SETUP;
   auto proper_sol = SolveParallelMain(A, b);
 
-//  cout << "Debug solution with Eigen serial partitioning:" << debug_sol << endl;
-  cout << "Proper solution:                              " << proper_sol << endl;
+  MASTER {
+//    auto debug_sol = SolveParallelDebug(A, b);
+//    cout << "Debug solution with Eigen serial partitioning:" << debug_sol << endl;
+    cout << "Solution using PP2 solver:                    " << proper_sol << endl;
+  }
   return proper_sol;
 }
 

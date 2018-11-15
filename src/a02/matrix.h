@@ -21,7 +21,7 @@ using namespace std;
 template<typename T>
 class Matrix {
  public:
-    Matrix(uint32_t long n, uint32_t m, const std::vector<T> &data)
+    Matrix(uint32_t n, uint32_t m, const std::vector<T> &data)
         : rows_(n), cols_(m), data_(data)
     {
       assert (n * m == data.size());
@@ -39,7 +39,7 @@ class Matrix {
       return data_[n * cols_ + m];
     }
 
-    bool all_close(const Matrix<T> &other) const {
+    bool all_close(const Matrix<T> &other, bool fail_on_nan = true) const {
       assert (rows_ == other.rows_ && cols_ == other.cols_);
       T epsilon = 1e-4;
       for(int i = 0; i < rows_; ++i) {
@@ -47,26 +47,30 @@ class Matrix {
           if (std::fabs((*this)(i, j) - other(i, j) > epsilon)) {
             return false;
           }
+
+          if(fail_on_nan && (std::isnan((*this)(i, j)) || std::isnan(other(i, j)))) {
+            return false;
+          }
         }
       }
       return true;
     }
 
-    int write_raw_rows(int row_start, int row_end, T *out, int offset) const {
-      int idx = offset;
-      for(int i = row_start; i < row_end; ++i) {
-        for(int j = 0; j < cols_; ++j) {
+    uint32_t write_raw_rows(uint32_t row_start, uint32_t row_end, T *out, uint32_t offset) const {
+      uint32_t idx = offset;
+      for(uint32_t i = row_start; i < row_end; ++i) {
+        for(uint32_t j = 0; j < cols_; ++j) {
           out[idx++] = data_[i * cols_ + j];
         }
       }
       return idx;
     }
 
-    int write_raw(unique_ptr<T[]> &p, int offset) const {
+    uint32_t write_raw(unique_ptr<T[]> &p, uint32_t offset) const {
       return write_raw(p.get(), offset);
     }
 
-    int write_raw(T *out, int offset) const {
+    uint32_t write_raw(T *out, uint32_t offset) const {
       return write_raw_rows(0, rows_, out, offset);
     }
 
@@ -130,7 +134,6 @@ class BandMatrix {
     assert(col_id >= 0 && col_id < n_);
 
     if (abs(col_id - row_id) <= bandwidth_) {
-      int off = col_id - row_id;
       return data_[index_(row_id, col_id)];
     }
     else {
@@ -189,15 +192,15 @@ class BandMatrix {
   }
 };
 
-bool all_close(const std::vector<double> &left, const std::vector<double> &right) {
-  double epsilon = 1e-6;
-  for(uint32_t i = 0; i < left.size(); ++i) {
-    if (fabs(left[i] - right[i]) > epsilon) {
-      return false;
-    }
-  }
-  return true;
-}
+//bool all_close(const std::vector<double> &left, const std::vector<double> &right) {
+//  double epsilon = 1e-6;
+//  for(uint32_t i = 0; i < left.size(); ++i) {
+//    if (fabs(left[i] - right[i]) > epsilon) {
+//      return false;
+//    }
+//  }
+//  return true;
+//}
 
 EMatrix ToEigen(const Matrix<double> &mat) {
   EMatrix res;
@@ -225,8 +228,8 @@ EMatrix ToEigen(const BandMatrix<double> &mat) {
   EMatrix res;
   res.resize(mat.get_n(), mat.get_n());
 
-  for (int i = 0; i < mat.get_n(); ++i) {
-    for (int j = 0; j < mat.get_n(); ++j) {
+  for (uint32_t i = 0; i < mat.get_n(); ++i) {
+    for (uint32_t j = 0; j < mat.get_n(); ++j) {
       res(i, j) = mat.get(i, j);
     }
   }
@@ -260,8 +263,8 @@ Matrix<T> operator-(const Matrix<T> &left, const Matrix<T> &right) {
   assert(left.rows_ == right.rows_);
 
   Matrix<T> result(left);
-  for(int i = 0; i < left.rows_; ++i) {
-    for(int j = 0; j < left.cols_; ++j) {
+  for(uint32_t i = 0; i < left.rows_; ++i) {
+    for(uint32_t j = 0; j < left.cols_; ++j) {
         result(i, j) -= right(i, j);
     }
   }
@@ -274,8 +277,8 @@ Matrix<T> operator+(const Matrix<T> &left, const Matrix<T> &right) {
   assert(left.rows_ == right.rows_);
 
   Matrix<T> result(left);
-  for(int i = 0; i < left.rows_; ++i) {
-    for(int j = 0; j < left.cols_; ++j) {
+  for(uint32_t i = 0; i < left.rows_; ++i) {
+    for(uint32_t j = 0; j < left.cols_; ++j) {
       result(i, j) += right(i, j);
     }
   }
@@ -287,8 +290,8 @@ template<typename T>
 std::ostream& operator<<(std::ostream& out, const BandMatrix<T> &m) {
   int n = m.get_n();
 
-  for(int i = 0; i < n; ++i) {
-    for(int j = 0; j < n; ++j) {
+  for(uint32_t i = 0; i < n; ++i) {
+    for(uint32_t j = 0; j < n; ++j) {
       out << setw(6) << setprecision(4) << m.get(i, j) << " ";
     }
     out << "\n";
