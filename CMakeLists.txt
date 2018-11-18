@@ -8,8 +8,13 @@ find_package(MPI REQUIRED)
 
 # Build gflags anywhere with -DREGISTER_BUILD_DIR=ON and this will work (no need to install).
 find_package(gflags REQUIRED)
-# TODO(andreib): Set appropriate flag if found or not found.
-find_package(Eigen3 REQUIRED NO_MODULE)
+find_package(Eigen3 NO_MODULE)
+if(Eigen3_FOUND)
+    message("Eigen3 found: ${Eigen3_VERSION} located here: ${Eigen3_DIR}")
+    add_compile_definitions(DEBUG_WITH_EIGEN)
+else()
+    message("Eigen3 not found. Will not perform error checking.")
+endif()
 
 include_directories(SYSTEM ${MPI_INCLUDE_PATH} .)
 
@@ -23,7 +28,7 @@ add_executable(globsum src/a01/globsum.cpp ${COMMON_SOURCES})
 add_executable(fanout src/a01/fanout.cpp ${COMMON_SOURCES})
 add_executable(ring src/a01/ring.cpp ${COMMON_SOURCES})
 
-add_executable(spline_problem src/a02/spline_problem.cpp ${COMMON_SOURCES} src/a02/matrix.h src/a02/serial_numerical.h src/a02/parallel_numerical.h)
+add_executable(spline_problem src/a02/spline_problem.cpp ${COMMON_SOURCES} src/a02/matrix.h src/a02/serial_numerical.h src/a02/parallel_numerical.h src/a02/parallel_numerical.cpp src/a02/serial_numerical.cpp src/a02/matrix.cpp)
 
 string(STRIP "${MPI_CXX_LIBRARIES}" MPI_CXX_LIBRARIES)
 string(STRIP "${MPI_CXX_LINK_FLAGS}" MPI_CXX_LINK_FLAGS)

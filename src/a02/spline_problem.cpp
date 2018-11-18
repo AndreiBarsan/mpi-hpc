@@ -1,9 +1,6 @@
 //
 // Entry point for solving quadratic spline interpolation.
 //
-// TODO(andreib): Define from CMake.
-#define DEBUG_WITH_EIGEN
-
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -24,7 +21,6 @@
 DEFINE_string(out_dir, "../results/spline_output", "The directory where to write experiment results (e.g., for "
                                                    "visualization).");
 
-// This is not great practice, but saves me lots of typing.
 using namespace std;
 using ScalarFunction = function<double(double)>;
 
@@ -36,7 +32,6 @@ enum SolverTypes {
   // The MPI-powered solver implemented for assignment 2.
   kPartitionTwo
 };
-
 
 /// Identical functionality to the 'linspace' function from numpy.
 vector<double> Linspace(double a, double b, int n) {
@@ -52,7 +47,7 @@ vector<double> Linspace(double a, double b, int n) {
 }
 
 
-/// Represents an interpolation problem
+/// Represents a quadratic spline interpolation problem.
 class SplineProblem {
  public:
   /// Constructs a quadratic spline interpolation problem.
@@ -61,7 +56,7 @@ class SplineProblem {
   /// \param function The ground truth scalar function.
   /// \param a        The start of the interval.
   /// \param b        The end of the interval.
-  SplineProblem(const string &name, int n, ScalarFunction function, double a, double b)
+  SplineProblem(const string &name, uint32_t n, const ScalarFunction &function, double a, double b)
     : n_(n),
       function_(function),
       a_(a),
@@ -70,13 +65,14 @@ class SplineProblem {
       name_(name)
   { }
 
-  BandMatrix<double> get_A() const {
+  /// Returns the tridiagonal coefficient matrix used in solving the problem.
+  BandMatrix<double> GetA() const {
     vector<double> data;
 
     data.push_back(0);    // This is just for padding.
     data.push_back(4);
     data.push_back(4);
-    for (int i = 1; i < n_ + 1; ++i) {
+    for (uint32_t i = 1; i < n_ + 1; ++i) {
       data.push_back(1);
       data.push_back(6);
       data.push_back(1);
@@ -88,13 +84,13 @@ class SplineProblem {
     return BandMatrix<double>(n_ + 2, data) * (1.0 / 8.0);
   }
 
-  vector<double> get_control_points() const {
+  vector<double> GetControlPoints() const {
     vector<double> knots = Linspace(a_, b_, n_ + 1);
 
     vector<double> midpoints_and_endpoints;
     midpoints_and_endpoints.reserve(n_ + 2UL);
     midpoints_and_endpoints.push_back(knots[0]);
-    for(int i = 1; i < n_ + 1; ++i) {
+    for(uint32_t i = 1; i < n_ + 1; ++i) {
       midpoints_and_endpoints.push_back((knots[i - 1] + knots[i]) / 2.0);
     }
     midpoints_and_endpoints.push_back(knots[knots.size() - 1]);
@@ -102,20 +98,21 @@ class SplineProblem {
     return midpoints_and_endpoints;
   }
 
-  vector<double> get_u() const {
+  /// Returns the right-hand side vector used in solving the problem. (Function value at each control point.)
+  vector<double> Getu() const {
     vector<double> u;
-    u.reserve(n_ + 2UL);
-    for (double &val : get_control_points()) {
+    u.reserve(n_ + 2);
+    for (double &val : GetControlPoints()) {
       u.push_back(function_(val));
     }
     return u;
   }
 
-  string get_full_name() const {
+  string GetFullName() const {
     return Format("problem-%s-%04d", name_.c_str(), n_);
   }
 
-  int n_;
+  uint32_t n_;
   ScalarFunction function_;
   double a_;
   double b_;
@@ -138,11 +135,11 @@ class SplineSolution {
     T val = 0;
 
     if (i > 0) {
-      val += coefs_[i - 1] * phi_i(i - 1, x);
+      val += coefs_[i - 1] * phi_i(static_cast<uint32_t>(i - 1), x);
     }
     val += coefs_[i] * phi_i(i, x);
     if (i < problem_.n_ + 2) {
-      val += coefs_[i + 1] * phi_i(i + 1, x);
+      val += coefs_[i + 1] * phi_i(static_cast<uint32_t>(i + 1), x);
     }
 
     return val;
@@ -153,7 +150,7 @@ class SplineSolution {
   const SplineProblem problem_;
   // TODO include resulting polynomials and error estimates here.
  private:
-  T phi_i(int i, T x) const {
+  T phi_i(uint32_t i, T x) const {
     assert(i >= 0 && i <= problem_.n_ + 2);
     return phi((x - problem_.a_) / problem_.step_size_ - i + 2);
   }
@@ -174,17 +171,17 @@ class SplineSolution {
   }
 };
 
-SplineProblem BuildFirstProblem(int n) {
+SplineProblem BuildFirstProblem(uint32_t n) {
   auto function = [](double x) { return x * x; };
   return SplineProblem("quad", n, function, 0.0, 1.0);
 }
 
-SplineProblem BuildSecondProblem(int n) {
+SplineProblem BuildSecondProblem(uint32_t n) {
   auto function = [](double x) { return sin(x); };
   return SplineProblem("sin", n, function, 0.0, M_PI * 12.0);
 }
 
-SplineProblem BuildCustomProblem(int n) {
+SplineProblem BuildCustomProblem(uint32_t n) {
   auto function = [](double x) { return 3.0 * sin(x) + sin(3 * x); };
   return SplineProblem("custom", n, function, 0.0, M_PI * 6.0);
 }
@@ -225,7 +222,7 @@ Matrix<double> SolveSystem(BandMatrix<double> &A, vector<double> &b, SolverTypes
     }
     return ::Matrix<double>(A.get_n(), 1, res);
 #else
-    throw runtime_error("Requested Eigen solver, but Eigen support is disabled!")
+    throw runtime_error("Requested Eigen solver, but Eigen support is disabled!");
 #endif
   }
   else if (method == SolverTypes::kCustomSingleThread) {
@@ -244,8 +241,8 @@ Matrix<double> SolveSystem(BandMatrix<double> &A, vector<double> &b, SolverTypes
 SplineSolution<double> Solve(const SplineProblem& problem, SolverTypes solver) {
   MPI_SETUP;
 
-  auto A = problem.get_A();
-  auto u = problem.get_u();
+  auto A = problem.GetA();
+  auto u = problem.Getu();
   cout << "System setup complete." << endl;
 
   BandMatrix<double> A_cpy(A);
@@ -255,16 +252,19 @@ SplineSolution<double> Solve(const SplineProblem& problem, SolverTypes solver) {
 #ifdef DEBUG_WITH_EIGEN
     // Make the master node check the solution using a built-in solver, if it is available.
     auto c_eigen = SolveSystem(A_cpy, u_cpy, SolverTypes::kEigenDense);
-    cout << "Eigen solution: " << c_eigen << endl;
-    cout << "Our solution:   " << c << endl;
     if (!c.all_close(c_eigen)) {
+      cerr << "Solution mismatch!" << endl;
+      cerr << "Eigen solution: " << c_eigen << endl;
+      cerr << "Our solution:   " << c << endl;
       throw runtime_error("Sanity check failed! Our solution was different from what Eigen computed.");
     }
     else {
       cout << "[OK] I computed the solution again in a naive way with Eigen, and the result matched!" << endl;
     }
+#else
+    cout << "Eigen unavailable, so NOT checking solution correctness. You are on your own!" << endl;
 #endif
-    cout << "Finished computing solution to problem: " << problem.get_full_name() << endl;
+    cout << "Finished computing solution to problem: " << problem.GetFullName() << endl;
   }
 
   // TODO(andreib): Populate this accordingly after computation complete, including ERROR INFO!
@@ -299,12 +299,12 @@ void Save(const SplineSolution<double> &solution, const string &out_dir) {
   }
 
   // Poor man's JSON dumping. Makes it super easy to load the results in Python and plot.
-  ofstream dump(Format("%s/output-%s.json", out_dir.c_str(), problem.get_full_name().c_str()));
+  ofstream dump(Format("%s/output-%s.json", out_dir.c_str(), problem.GetFullName().c_str()));
   if (!dump) {
     throw runtime_error("Could not write output.");
   }
   dump << "{" << endl;
-  dump << "\t\"control_x\": [" << problem.get_control_points() << "]," << endl;
+  dump << "\t\"control_x\": [" << problem.GetControlPoints() << "]," << endl;
   dump << "\t\"control_y\": [" << solution.control_y_ << "]," << endl;
   dump << "\t\"coefs\":[" << solution.coefs_ << "]," << endl,
   dump << "\t\"x\": [" << plot_points << "]," << endl;
@@ -406,7 +406,6 @@ int SplineExperiment(int argc, char **argv) {
 //  vector<int> ns = {510}; //, 62}; //, 126, 254, 510};
 
   SolverTypes solver = SolverTypes::kPartitionTwo;
-//  SolverTypes solver = SolverTypes::kCustomSingleThread;
 
   for (int n : ns) {
     // For both problems, 'Solve' generates the problem matrices and vectors, applies the partitioning to compute the
@@ -416,7 +415,7 @@ int SplineExperiment(int argc, char **argv) {
 //    auto problems = {BuildSecondProblem(n)};
     for (const auto &problem : problems) {
       MASTER {
-        cout << endl << "Solving " << problem.get_full_name() << "..." << endl << endl << endl;
+        cout << endl << "Solving " << problem.GetFullName() << "..." << endl << endl << endl;
       }
       auto solution = Solve(problem, solver);
       MASTER {
@@ -424,8 +423,6 @@ int SplineExperiment(int argc, char **argv) {
       }
     }
   }
-
-//  system("python ../src/a02/plot_output.py ../results/spline_output/");
 
   MPI_Finalize();
   return 0;

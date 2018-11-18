@@ -5,6 +5,17 @@
 #ifndef HPSC_MATRIX_H
 #define HPSC_MATRIX_H
 
+#include <chrono>
+#include <cmath>
+#include <iostream>
+#include <numeric>
+#include <sstream>
+#include <vector>
+#include <fstream>
+#include <functional>
+#include <src/common/utils.h>
+#include <thread>
+#include "Eigen/Eigen"
 #include <cassert>
 #include <cstdint>
 #include <iomanip>
@@ -169,11 +180,11 @@ class BandMatrix {
 
   /// Writes the raw data corresponding to the rows in [row_start, row_end) to out, returning the number of elements
   /// written. Note that this also writes padding elements.
-  int write_raw_rows(int row_start, int row_end, T *out, int offset) const {
-    int idx = offset;
-    int effective = bandwidth_ * 2 + 1;
-    for(int i = row_start; i < row_end; ++i) {
-      for (int raw_col = 0; raw_col < effective; ++raw_col) {
+  uint32_t write_raw_rows(uint32_t row_start, uint32_t row_end, T *out, uint32_t offset) const {
+    uint32_t idx = offset;
+    uint32_t effective = bandwidth_ * 2 + 1;
+    for(uint32_t i = row_start; i < row_end; ++i) {
+      for (uint32_t raw_col = 0; raw_col < effective; ++raw_col) {
         out[idx++] = data_[i * effective + raw_col];
       }
     }
@@ -202,39 +213,11 @@ class BandMatrix {
 //  return true;
 //}
 
-EMatrix ToEigen(const Matrix<double> &mat) {
-  EMatrix res;
-  res.resize(mat.rows_, mat.cols_);
+EMatrix ToEigen(const Matrix<double> &mat);;
 
-  for (uint32_t i = 0; i < mat.rows_; ++i) {
-    for (uint32_t j = 0; j < mat.cols_; ++j) {
-      res(i, j) = mat(i, j);
-    }
-  }
-  return res;
-};
+Matrix<double> ToMatrix(const EMatrix &eigen);
 
-Matrix<double> ToMatrix(const EMatrix &eigen) {
-  vector<double> data;
-  for(int i = 0; i < eigen.rows(); ++i) {
-    for(int j = 0; j < eigen.cols(); ++j) {
-      data.push_back(eigen(i, j));
-    }
-  }
-  return Matrix<double>(eigen.rows(), eigen.cols(), data);
-}
-
-EMatrix ToEigen(const BandMatrix<double> &mat) {
-  EMatrix res;
-  res.resize(mat.get_n(), mat.get_n());
-
-  for (uint32_t i = 0; i < mat.get_n(); ++i) {
-    for (uint32_t j = 0; j < mat.get_n(); ++j) {
-      res(i, j) = mat.get(i, j);
-    }
-  }
-  return res;
-};
+EMatrix ToEigen(const BandMatrix<double> &mat);;
 
 
 
@@ -331,16 +314,7 @@ std::ostream& operator<<(std::ostream& out, const std::vector<T>& data) {
   return out;
 }
 
-#include <chrono>
-#include <cmath>
-#include <iostream>
-#include <numeric>
-#include <sstream>
-#include <vector>
-#include <fstream>
-#include <functional>
-#include <src/common/utils.h>
-#include <thread>
-#include "Eigen/Eigen"
+
+vector<double> Zeros(int count);
 
 #endif //HPSC_MATRIX_H
