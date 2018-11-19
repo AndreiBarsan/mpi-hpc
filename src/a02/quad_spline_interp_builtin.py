@@ -11,12 +11,12 @@ from scipy.interpolate import spline as scipy_spline
 def main():
     # The problem description indicates we have a grid with points indexed from 0 to n inclusive, so n+1 total points,
     # with the first (idx 0) = a, and the last (idx n) = b.
-    n = 10
+    n = 14
     a = 0.0
-    # b = math.pi * 24.0
-    b = 3.0
-    fn = lambda x: x ** 2
-    # fn = lambda x: np.sin(x)
+    b = math.pi * 12.0
+    # b = 3.0
+    # fn = lambda x: x ** 2
+    fn = lambda x: np.sin(x)
     plot_gt_interpolation = True
 
     # This is the dense sample set we plot the GT and the interpolation results on
@@ -75,7 +75,7 @@ def main():
 
     def poly(x):
         i = int(math.ceil(x / step_size))
-        print(x, i)
+        print("Poly:", x, i)
         val = 0
         if i > 0:
             val += c[i - 1] * phi_i(i - 1, x)

@@ -24,6 +24,7 @@ def main():
         plt.plot(x, gt_y, label="Ground truth function")
         plt.plot(x, interp_y, '--', label="Interpolation result")
         plt.legend()
+        plt.savefig(root + "/plot-{}.png".format(file[file.rfind('/') + 1:]))
 
     plt.show()
 

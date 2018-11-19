@@ -22,7 +22,9 @@ cd build && cmake -DEXPORT_BUILD_DIR=ON .. && make -j4
  - (Optional) Python 3 for analyzing the data and producing the plots. The Python package dependencies are 
  specified in the `requirements.txt` file, which can be loaded easily into any virtual or Anaconda environment.
  - (Optional) For Assignment 2, Eigen 3 can enable additional checks by comparing the results produced by the custom 
- solver with those produced by an industry-standard solver provided by Eigen.
+ solver with those produced by an industry-standard solver provided by Eigen. A reasonably new version can be 
+ installed on a Debian-like distribution by running `sudo apt install libeigen3-dev`. Note that Eigen3 is a 
+ header-only library, so it doesn't need to be compiled per se, or linked, just included.
  
  
 ### Running the Code

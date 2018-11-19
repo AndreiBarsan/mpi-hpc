@@ -135,11 +135,13 @@ class SplineSolution {
     T val = 0;
 
     if (i > 0) {
-      val += coefs_[i - 1] * phi_i(static_cast<uint32_t>(i - 1), x);
+      val += coefs_[i - 1] * phi_i(i - 1, x);
     }
     val += coefs_[i] * phi_i(i, x);
-    if (i > 0 && static_cast<uint32_t>(i) < problem_.n_ + 2) {
-      val += coefs_[i + 1] * phi_i(static_cast<uint32_t>(i + 1), x);
+
+    int ni = problem_.n_ ;
+    if (i < ni + 1) {     // Should be + 2 ??? XXX
+      val += coefs_[i + 1] * phi_i(i + 1, x);
     }
 
     return val;
@@ -151,7 +153,7 @@ class SplineSolution {
   // TODO include resulting polynomials and error estimates here.
  private:
   T phi_i(uint32_t i, T x) const {
-    assert(i >= 0 && i <= problem_.n_ + 2);
+    assert(i >= 0 && i <= problem_.n_ + 1);
     return phi((x - problem_.a_) / problem_.step_size_ - i + 2);
   }
 
@@ -181,6 +183,7 @@ SplineProblem BuildSecondProblem(uint32_t n) {
   return SplineProblem("sin", n, function, 0.0, M_PI * 12.0);
 }
 
+/// A third custom problem I used for debugging. Not used in the final analysis.
 SplineProblem BuildCustomProblem(uint32_t n) {
   auto function = [](double x) { return 3.0 * sin(x) + sin(3 * x); };
   return SplineProblem("custom", n, function, 0.0, M_PI * 6.0);
@@ -276,7 +279,11 @@ void Save(const SplineSolution<double> &solution, const string &out_dir) {
   cout << "Will save results to output directory: " << out_dir << endl;
   auto &problem = solution.problem_;
   // These are the points where we plot the interpolated result (and the GT fn).
-  auto plot_points = Linspace(problem.a_, problem.b_, 3 * problem.n_ + 1);
+  int count = 3 * problem.n_ + 1;
+  if (count < 100) {
+    count = 100;
+  }
+  auto plot_points = Linspace(problem.a_, problem.b_, count);
 
   vector<double> gt_y;
   vector<double> interp_y;
@@ -410,13 +417,45 @@ double MaxAbsError(const vector<double> &points, const SplineProblem &problem, c
   return max_error;
 }
 
+double MaxAbsErrorParallel(
+    const vector<double> &points,
+    const SplineProblem &problem,
+    const SplineSolution<double> &solution
+) {
+  MPI_SETUP;
+  int chunk_size = (points.size() / n_procs) + 1;
+  int my_start = local_id * chunk_size;
+  int my_count = chunk_size;
+  cout << "MAEP: " << local_id << "; start = " << my_start << ", end = " << my_start + my_count << ", size = "
+       << points.size() << endl;
+
+  double max_error = -1.0;
+  for (int i = my_start; i < my_start + my_count; ++i) {
+    if (i < points.size()) {
+      double x_i = points[i];
+      double q_i = solution(x_i);
+      double u_i = problem.function_(x_i);
+      double abs_error = fabs(q_i - u_i);
+      if (abs_error > max_error) {
+        max_error = abs_error;
+      }
+    }
+  }
+
+  double sendbuf = max_error;
+  double recvbuf = 0.0;
+  MPI_Allreduce(&sendbuf, &recvbuf, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  return recvbuf;
+}
+
 int SplineExperiment(int argc, char **argv) {
   MPI_Init(&argc, &argv);
   MPI_SETUP;
-  vector<uint32_t> ns = {30, 62, 126, 254, 510};
+  vector<uint32_t> ns = {14, 30, 62, 126, 254, 510};
 //  vector<uint32_t> ns = {62, 126, 254, 510};
 
-  SolverTypes solver = SolverTypes::kPartitionTwo;
+//  SolverTypes solver = SolverTypes::kPartitionTwo;
+  SolverTypes solver = SolverTypes::kEigenDense;
 
   for (uint32_t n : ns) {
     // For both problems, 'Solve' generates the problem matrices and vectors, applies the partitioning to compute the
@@ -434,22 +473,48 @@ int SplineExperiment(int argc, char **argv) {
         cout << "Computing error statistics." << endl;
       }
 
-      // TODO(andreib): Parallelize the error computation and use a max-based reduce to 0.
       auto knots = Linspace(problem.a_, problem.b_, problem.n_ + 1);
+      auto denser_pts = Linspace(problem.a_, problem.b_, 3 * problem.n_ + 1);
+
+      // Initial code I used to compute erorrs sequentially.
+//      double max_knot_error = -1.0;
+//      double max_dense_error = -1.0;
+//      MASTER {
+//        max_knot_error = MaxAbsError(knots, problem, solution);
+//        cout << "problem: " << problem.GetFullName() << " (n = " << n << "), max error on the (n + 1) knots = "
+//             << max_knot_error << endl;
+//
+//        max_dense_error = MaxAbsError(denser_pts, problem, solution);
+//        cout << "problem: " << problem.GetFullName() << " (n = " << n << "), max error on the (3n + 1) pts = "
+//             << max_dense_error << endl;
+//      }
+
+      double mke_p = MaxAbsErrorParallel(knots, problem, solution);
+      double mde_p = MaxAbsErrorParallel(denser_pts, problem, solution);
       MASTER {
-        double max_knot_error = MaxAbsError(knots, problem, solution);
         cout << "problem: " << problem.GetFullName() << " (n = " << n << "), max error on the (n + 1) knots = "
-             << max_knot_error << endl;
-
-        auto denser_pts = Linspace(problem.a_, problem.b_, 3 * problem.n_ + 1);
-        double max_dense_error = MaxAbsError(denser_pts, problem, solution);
+             << mke_p << endl;
         cout << "problem: " << problem.GetFullName() << " (n = " << n << "), max error on the (3n + 1) pts = "
-             << max_dense_error << endl;
-      }
+             << mde_p << endl;
+      };
 
-      // compute maximum errors required within the processor’s subintervals
-//      int my_start = local_id * cp.size() / n_procs;
-//      cout << local_id << ": start from CP idx" << endl;
+//      MASTER {
+//        double knot_err_err = fabs(mke_p - max_knot_error);
+//        double dense_err_err = fabs(mde_p - max_dense_error);
+//        if (knot_err_err > 1e-8) {
+//          cout << "Error estimating knot error: " << knot_err_err << endl;
+//          cout << mke_p << " vs. " << max_knot_error << endl;
+//          throw runtime_error("");
+//        }
+//        cout << "Parallel knot errors computed OK." << endl;
+//
+//        if (dense_err_err > 1e-8) {
+//          cout << "Error estimating dense error: " << dense_err_err << endl;
+//          cout << mde_p << " vs. " << max_dense_error << endl;
+//          throw runtime_error("");
+//        }
+//        cout << "Parallel dense errors computed OK!" << endl;
+//      };
 
       MASTER {
         Save(solution, FLAGS_out_dir);
