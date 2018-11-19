@@ -138,7 +138,7 @@ class SplineSolution {
       val += coefs_[i - 1] * phi_i(static_cast<uint32_t>(i - 1), x);
     }
     val += coefs_[i] * phi_i(i, x);
-    if (i < problem_.n_ + 2) {
+    if (i > 0 && static_cast<uint32_t>(i) < problem_.n_ + 2) {
       val += coefs_[i + 1] * phi_i(static_cast<uint32_t>(i + 1), x);
     }
 
@@ -207,8 +207,8 @@ Matrix<double> SolveSystem(BandMatrix<double> &A, vector<double> &b, SolverTypes
     A_eigen.resize(A.get_n(), A.get_n());
     b_eigen.resize(A.get_n(), 1);
 
-    for (int i = 0; i < A.get_n(); ++i) {
-      for (int j = 0; j < A.get_n(); ++j) {
+    for (uint32_t i = 0; i < A.get_n(); ++i) {
+      for (uint32_t j = 0; j < A.get_n(); ++j) {
         A_eigen(i, j) = A.get(i, j);
       }
       b_eigen(i) = b[i];
@@ -217,7 +217,7 @@ Matrix<double> SolveSystem(BandMatrix<double> &A, vector<double> &b, SolverTypes
 
     // Convert the Eigen matrix to our own type and return.
     vector<double> res;
-    for (int i = 0; i < A.get_n(); ++i) {
+    for (uint32_t i = 0; i < A.get_n(); ++i) {
       res.push_back(x(i));
     }
     return ::Matrix<double>(A.get_n(), 1, res);
@@ -240,10 +240,8 @@ Matrix<double> SolveSystem(BandMatrix<double> &A, vector<double> &b, SolverTypes
 
 SplineSolution<double> Solve(const SplineProblem& problem, SolverTypes solver) {
   MPI_SETUP;
-
   auto A = problem.GetA();
   auto u = problem.Getu();
-  cout << "System setup complete." << endl;
 
   BandMatrix<double> A_cpy(A);
   vector<double> u_cpy = u;
@@ -267,9 +265,8 @@ SplineSolution<double> Solve(const SplineProblem& problem, SolverTypes solver) {
     cout << "Finished computing solution to problem: " << problem.GetFullName() << endl;
   }
 
-  // TODO(andreib): Populate this accordingly after computation complete, including ERROR INFO!
   vector<double> c_vec;
-  for(uint32_t i = 0;i < A.get_n(); ++i) {
+  for(uint32_t i = 0; i < A.get_n(); ++i) {
     c_vec.push_back(c(i, 0));
   }
   return SplineSolution<double>(u, c_vec, problem);
@@ -399,25 +396,61 @@ void TestMultiRHS() {
   cout << x_pad << endl;
 }
 
+/// Computes the max abs error of the solution on the specified points of the problem.
+double MaxAbsError(const vector<double> &points, const SplineProblem &problem, const SplineSolution<double> &solution) {
+  double max_error = -1.0;
+  for (double x_i : points) {
+    double q_i = solution(x_i);
+    double u_i = problem.function_(x_i);
+    double abs_error = fabs(q_i - u_i);
+    if (abs_error > max_error) {
+      max_error = abs_error;
+    }
+  }
+  return max_error;
+}
+
 int SplineExperiment(int argc, char **argv) {
   MPI_Init(&argc, &argv);
   MPI_SETUP;
-  vector<int> ns = {30, 62, 126, 254, 510};
-//  vector<int> ns = {510}; //, 62}; //, 126, 254, 510};
+  vector<uint32_t> ns = {30, 62, 126, 254, 510};
+//  vector<uint32_t> ns = {62, 126, 254, 510};
 
   SolverTypes solver = SolverTypes::kPartitionTwo;
 
-  for (int n : ns) {
+  for (uint32_t n : ns) {
     // For both problems, 'Solve' generates the problem matrices and vectors, applies the partitioning to compute the
     // solution, computes maximum errors within each processor's subintervals, and the global errors over all nodes
     // and over 3n+1 points.
-    auto problems = {BuildFirstProblem(n), BuildSecondProblem(n), BuildCustomProblem(n)};
-//    auto problems = {BuildSecondProblem(n)};
+    auto problems = {BuildFirstProblem(n), BuildSecondProblem(n)};
     for (const auto &problem : problems) {
       MASTER {
-        cout << endl << "Solving " << problem.GetFullName() << "..." << endl << endl << endl;
+        cout << endl << endl << "Solving " << problem.GetFullName() << "..." << endl;
       }
       auto solution = Solve(problem, solver);
+
+      MPI_Barrier(MPI_COMM_WORLD);
+      MASTER {
+        cout << "Computing error statistics." << endl;
+      }
+
+      // TODO(andreib): Parallelize the error computation and use a max-based reduce to 0.
+      auto knots = Linspace(problem.a_, problem.b_, problem.n_ + 1);
+      MASTER {
+        double max_knot_error = MaxAbsError(knots, problem, solution);
+        cout << "problem: " << problem.GetFullName() << " (n = " << n << "), max error on the (n + 1) knots = "
+             << max_knot_error << endl;
+
+        auto denser_pts = Linspace(problem.a_, problem.b_, 3 * problem.n_ + 1);
+        double max_dense_error = MaxAbsError(denser_pts, problem, solution);
+        cout << "problem: " << problem.GetFullName() << " (n = " << n << "), max error on the (3n + 1) pts = "
+             << max_dense_error << endl;
+      }
+
+      // compute maximum errors required within the processor’s subintervals
+//      int my_start = local_id * cp.size() / n_procs;
+//      cout << local_id << ": start from CP idx" << endl;
+
       MASTER {
         Save(solution, FLAGS_out_dir);
       }

@@ -127,7 +127,7 @@ int RingExperiment(int argc, char **argv) {
 
       if (run_idx % 10 == 0) {
         // Validate results every now and then
-        for (int i = 0; i < dummy_data_A.size(); ++i) {
+        for (uint32_t i = 0; i < dummy_data_A.size(); ++i) {
           if (dummy_data_A[i] != dummy_data_B[i]) {
             throw runtime_error("Inconsistent results between the two approaches!");
           }
