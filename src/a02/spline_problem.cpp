@@ -260,7 +260,8 @@ SplineSolution<double> Solve(const SplineProblem& problem, SolverTypes solver) {
       throw runtime_error("Sanity check failed! Our solution was different from what Eigen computed.");
     }
     else {
-      cout << "[OK] I computed the solution again in a naive way with Eigen, and the result matched!" << endl;
+      cout << "[OK] I computed the solution again in a naive way with Eigen, and the result matched using an epsilon "
+              "of " << 1e-6 << "." << endl;
     }
 #else
     cout << "Eigen unavailable, so NOT checking solution correctness. You are on your own!" << endl;
@@ -454,8 +455,8 @@ int SplineExperiment(int argc, char **argv) {
   vector<uint32_t> ns = {14, 30, 62, 126, 254, 510};
 //  vector<uint32_t> ns = {62, 126, 254, 510};
 
-//  SolverTypes solver = SolverTypes::kPartitionTwo;
-  SolverTypes solver = SolverTypes::kEigenDense;
+  SolverTypes solver = SolverTypes::kPartitionTwo;
+//  SolverTypes solver = SolverTypes::kEigenDense;
 
   for (uint32_t n : ns) {
     // For both problems, 'Solve' generates the problem matrices and vectors, applies the partitioning to compute the

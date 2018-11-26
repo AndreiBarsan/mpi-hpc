@@ -49,7 +49,7 @@ class Matrix {
 
     bool all_close(const Matrix<T> &other, bool fail_on_nan = true) const {
       assert (rows_ == other.rows_ && cols_ == other.cols_);
-      T epsilon = 1e-4;
+      T epsilon = 1e-6;
       for(uint32_t i = 0; i < rows_; ++i) {
         for(uint32_t j = 0; j < cols_; ++j) {
           if (std::fabs((*this)(i, j) - other(i, j) > epsilon)) {
