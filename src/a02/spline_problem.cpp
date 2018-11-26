@@ -14,9 +14,9 @@
 #include "gflags/gflags.h"
 #include "mpi.h"
 
-#include "matrix.h"
-#include "serial_numerical.h"
-#include "parallel_numerical.h"
+#include "src/common/matrix.h"
+#include "src/common/serial_numerical.h"
+#include "src/common/parallel_numerical.h"
 
 DEFINE_string(out_dir, "../results/spline_output", "The directory where to write experiment results (e.g., for "
                                                    "visualization).");
