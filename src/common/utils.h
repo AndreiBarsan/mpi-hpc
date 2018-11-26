@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <fstream>
 
+#include <Eigen/Core>
 #include "mpi.h"
 
 /// Splits a string using the given delimiter.
@@ -51,8 +52,15 @@ MPI_Datatype MPIType<float>();
 
 int Flip(unsigned int i, unsigned int n);
 
+/// Writes the given timing data as a simple CSV.
 void WriteTimingResults(std::string &fpath, const std::vector<std::chrono::duration<double>>& times_s);
 
+/// Identical functionality to the 'linspace' function from numpy.
+std::vector<double> Linspace(double a, double b, int n);
+
+/// Returns the cartesian product of the sets x and y in a (xy) x 2 array.
+/// Sort of like numpy.meshgrid in Python.
+Eigen::MatrixX2d MeshGrid(const Eigen::ArrayXd &x, const Eigen::ArrayXd &y);
 
 
 #endif // UTILS_H

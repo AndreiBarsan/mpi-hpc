@@ -18,7 +18,7 @@
 #include <thread>
 #include <vector>
 
-#include "Eigen/Eigen"
+#include <Eigen/Core>
 
 #include <src/common/utils.h>
 

@@ -9,7 +9,7 @@
 #include <vector>
 
 #ifdef DEBUG_WITH_EIGEN
-#include "Eigen/Eigen"
+#include "Eigen/Core"
 #endif
 
 
@@ -41,5 +41,31 @@ Matrix<double> SolveDecomposed(const BandMatrix<double> &A_decomposed, Matrix<do
 ///     5. Solve UX = Z for X with backward substitution.
 ///     6. Return the final solutions X.
 Matrix<double> SolveSerial(BandMatrix<double> &A, Matrix<double> &B, bool check_lu = false);
+
+
+/// Polynomial interpolation basis function.
+template<typename T>
+T Phi(T x) {
+  if (x >= 0 && x <= 1) {
+    return 0.5 * x * x;
+  }
+  else if(x > 1 && x <= 2) {
+    return 0.5 * (-2.0 * (x - 1) * (x - 1) + 2 * (x - 1) + 1);
+  }
+  else if(x > 2 && x <= 3) {
+    return 0.5 * (3 - x) * (3 - x);
+  }
+  else {
+    return 0.0;
+  }
+}
+
+
+template<typename T>
+T PhiI(uint32_t i, T x, T a, uint32_t n, T step_size) {
+  assert(i >= 0 && i <= n + 1);
+  return Phi((x - a) / step_size - i + 2);
+}
+
 
 #endif //HPSC_SERIAL_NUMERICAL_H

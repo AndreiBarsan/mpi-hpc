@@ -1,5 +1,7 @@
 #include "parallel_numerical.h"
 
+#include "Eigen/LU"
+
 // Known to be ALWAYS zero: B_i2, C_i2.
 // TODO-LOW(andreib): Implement low-tri/up-tri matrix class to improve efficiency of certain multiplications even more.
 

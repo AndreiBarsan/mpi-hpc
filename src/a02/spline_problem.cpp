@@ -12,11 +12,12 @@
 #include <tuple>
 
 #include "gflags/gflags.h"
-#include "mpi.h"
+#include <Eigen/QR>
 
 #include "src/common/matrix.h"
 #include "src/common/serial_numerical.h"
 #include "src/common/parallel_numerical.h"
+#include "src/common/utils.h"
 
 DEFINE_string(out_dir, "../results/spline_output", "The directory where to write experiment results (e.g., for "
                                                    "visualization).");
@@ -32,20 +33,6 @@ enum SolverTypes {
   // The MPI-powered solver implemented for assignment 2.
   kPartitionTwo
 };
-
-/// Identical functionality to the 'linspace' function from numpy.
-vector<double> Linspace(double a, double b, int n) {
-  vector<double> res;
-  double cur = a;
-  // Ensure we reach b exactly without having to do n+1 steps.
-  double step_size = (b - a) / (n - 1);
-  for (int i = 0; i < n; ++i) {
-    res.push_back(cur);
-    cur += step_size;
-  }
-  return res;
-}
-
 
 /// Represents a quadratic spline interpolation problem.
 class SplineProblem {
@@ -86,7 +73,6 @@ class SplineProblem {
 
   vector<double> GetControlPoints() const {
     vector<double> knots = Linspace(a_, b_, n_ + 1);
-
     vector<double> midpoints_and_endpoints;
     midpoints_and_endpoints.reserve(n_ + 2UL);
     midpoints_and_endpoints.push_back(knots[0]);
@@ -129,21 +115,20 @@ class SplineSolution {
         coefs_(coefs),
         problem_(problem) {}
 
+  /// Computes the interpolation result at point x.
   T operator()(T x) const {
-    /// Computes the interpolation result at point x.
     auto i = static_cast<int>(ceil(x / problem_.step_size_));
     T val = 0;
 
     if (i > 0) {
-      val += coefs_[i - 1] * phi_i(i - 1, x);
+      val += coefs_[i - 1] * PhiI(i - 1, x, problem_.a_, problem_.n_, problem_.step_size_);
     }
-    val += coefs_[i] * phi_i(i, x);
+    val += coefs_[i] * PhiI(i, x, problem_.a_, problem_.n_, problem_.step_size_);
 
     int ni = problem_.n_ ;
-    if (i < ni + 1) {     // Should be + 2 ??? XXX
-      val += coefs_[i + 1] * phi_i(i + 1, x);
+    if (i < ni + 1) {
+      val += coefs_[i + 1] * PhiI(i + 1, x, problem_.a_, problem_.n_, problem_.step_size_);
     }
-
     return val;
   }
 
@@ -151,26 +136,6 @@ class SplineSolution {
   const vector<T> coefs_;
   const SplineProblem problem_;
   // TODO include resulting polynomials and error estimates here.
- private:
-  T phi_i(uint32_t i, T x) const {
-    assert(i >= 0 && i <= problem_.n_ + 1);
-    return phi((x - problem_.a_) / problem_.step_size_ - i + 2);
-  }
-
-  T phi(T x) const {
-    if (x >= 0 && x <= 1) {
-      return 0.5 * x * x;
-    }
-    else if(x > 1 && x <= 2) {
-      return 0.5 * (-2.0 * (x - 1) * (x - 1) + 2 * (x - 1) + 1);
-    }
-    else if(x > 2 && x <= 3) {
-      return 0.5 * (3 - x) * (3 - x);
-    }
-    else {
-      return 0.0;
-    }
-  }
 };
 
 SplineProblem BuildFirstProblem(uint32_t n) {
@@ -316,12 +281,6 @@ void Save(const SplineSolution<double> &solution, const string &out_dir) {
   dump << "\t\"gt_y\": [" << gt_y << "]," << endl;
   dump << "\t\"interp_y\": [" << interp_y << "]" << endl;
   dump << "}";
-
-//  cout << "Interpolation result:" << endl;
-//  cout << interp_y << endl;
-//  cout << interp_y[interp_y.size() - 2] << " ";
-//  cout << interp_y[interp_y.size() - 1] << " ";
-//  cout << interp_y[interp_y.size() - 0] << " ";
 }
 
 /// A simple test to ensure that we support multiple right-hand sides OK. (And a pentadiagonal matrix.)

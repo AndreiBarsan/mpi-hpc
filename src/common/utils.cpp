@@ -8,6 +8,7 @@
 
 
 using namespace std;
+using namespace Eigen;
 
 template<typename Out>
 void Split(const string &s, char delim, Out result) {
@@ -124,5 +125,28 @@ void WriteTimingResults(std::string &fpath, const std::vector<std::chrono::durat
 template<>
 MPI_Datatype MPIType<double>() {
   return MPI_DOUBLE;
+}
+
+vector<double> Linspace(double a, double b, int n) {
+  vector<double> res;
+  double cur = a;
+  // Ensure we reach b exactly without having to do n+1 steps.
+  double step_size = (b - a) / (n - 1);
+  for (int i = 0; i < n; ++i) {
+    res.push_back(cur);
+    cur += step_size;
+  }
+  return res;
+}
+
+Eigen::MatrixX2d MeshGrid(const Eigen::ArrayXd &x, const Eigen::ArrayXd &y) {
+  MatrixX2d result(x.rows() * y.rows(), 2);
+  for (uint32_t i = 0; i < x.rows(); ++i) {
+    for (uint32_t j = 0; j < y.rows(); ++j) {
+      result(i * y.rows() + j, 0) = x(i);
+      result(i * y.rows() + j, 1) = y(j);
+    }
+  }
+  return result;
 }
 
