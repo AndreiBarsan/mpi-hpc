@@ -24,7 +24,7 @@ def main():
         m = data['m']
         n = data['n']
 
-        x = data['x']
+        # x = data['x']
         gt_y = data['gt_y']
         interp_y = np.array(data['interp_y'])
 
@@ -48,7 +48,6 @@ def main():
         plt.title("Delta / Error")
 
         plt.suptitle("Experiment: {}".format(data['name']))
-        plt.show()
 
         # plt.figure()
         # plt.scatter(data['control_x'], data['control_y'], label="Knots")

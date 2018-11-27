@@ -270,13 +270,13 @@ void Save(const Spline2DSolution<double> &solution, const string &out_dir) {
   dump << "{\n"
        << "\t\"m\": " << problem.m_ << ",\n"
        << "\t\"n\": " << problem.n_ << ",\n"
-       << "\t\"control_x\": [" << problem.GetControlPoints().format(one_row_fmt) << "],\n"
-       << "\t\"control_y\": [" << solution.control_vals_.format(one_row_fmt) << "],\n"
-       << "\t\"coefs\":[" << solution.coefs_.format(one_row_fmt) << "],\n"
-       << "\t\"x\": [" << denser_grid.format(one_row_fmt) << "],\n"
+//       << "\t\"control_x\": [" << problem.GetControlPoints().format(one_row_fmt) << "],\n"
+//       << "\t\"control_y\": [" << solution.control_vals_.format(one_row_fmt) << "],\n"
+//       << "\t\"coefs\":[" << solution.coefs_.format(one_row_fmt) << "],\n"
+//       << "\t\"x\": [" << denser_grid.format(one_row_fmt) << "],\n"
        << "\t\"gt_y\": [" << gt_y << "],\n"
        << "\t\"interp_y\": [" << interp_y << "],\n"
-       << "\t\"name\": " << p.GetFullName() << ",\n"
+       << "\t\"name\":  \"" << p.GetFullName() << "\"\n"
        << "}"
        << endl;   // Flush the stream.
 }
