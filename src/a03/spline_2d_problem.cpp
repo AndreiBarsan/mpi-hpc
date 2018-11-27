@@ -18,7 +18,7 @@
 
 
 // X <---> N points.
-// Y <----> M points.
+// Y <---> M points.
 //
 // N is the first dimension, M is the second dimension.
 
@@ -94,9 +94,8 @@ class Spline2DProblem {
   }
 
   Eigen::MatrixX2d GetControlPoints() const {
-    using namespace Eigen;
-    ArrayXd x_coord = GetControlPoints1d(n_, a_x_, b_x_);
-    ArrayXd y_coord = GetControlPoints1d(m_, a_y_, b_y_);
+    Eigen::ArrayXd x_coord = GetControlPoints1d(n_, a_x_, b_x_);
+    Eigen::ArrayXd y_coord = GetControlPoints1d(m_, a_y_, b_y_);
     auto xy_coord = MeshGrid(x_coord, y_coord);
     assert(xy_coord.rows() == ((n_ + 2) * (m_ + 2)));
     return xy_coord;
@@ -138,7 +137,7 @@ class Spline2DProblem {
   }
 
  public:
-  const string &name_;
+  const string name_;
   // n_ rows, m_ columns
   const uint32_t n_;
   const uint32_t m_;
@@ -167,7 +166,7 @@ class Spline2DSolution {
     T val = 0;
     for(int ii = i - 1; ii <= i + 1; ++ii) {
       for(int jj = j - 1; jj <= j + 1; ++jj) {
-        double coef = GetCoef(ii, jj);
+        double coef = GetCoef(jj, ii);
         if (fabs(coef) > 1e-8) {
           val += coef
               * PhiI(ii, x, problem_.a_x_, problem_.n_, problem_.step_size_x_)
@@ -217,7 +216,7 @@ double GetMaxError(const Eigen::MatrixX2d &cpoints, const Spline2DProblem& p, co
       max_err = err;
     }
 
-    cout << "Eval error at " << i << " (" << cpoints(i, 0) << ", " << cpoints(i, 1) << ") = " << err << endl;
+//    cout << "Eval error at " << i << " (" << cpoints(i, 0) << ", " << cpoints(i, 1) << ") = " << err << endl;
   }
   return max_err;
 }
@@ -271,13 +270,15 @@ void Save(const Spline2DSolution<double> &solution, const string &out_dir) {
   dump << "{\n"
        << "\t\"m\": " << problem.m_ << ",\n"
        << "\t\"n\": " << problem.n_ << ",\n"
-       << "\t\"control_x\": [" << problem.GetControlPoints().format(one_row_fmt) << "]," << endl
-       << "\t\"control_y\": [" << solution.control_vals_.format(one_row_fmt) << "]," << endl
-       << "\t\"coefs\":[" << solution.coefs_.format(one_row_fmt) << "]," << endl
-       << "\t\"x\": [" << denser_grid.format(one_row_fmt) << "]," << endl
-       << "\t\"gt_y\": [" << gt_y << "]," << endl
-       << "\t\"interp_y\": [" << interp_y << "]" << endl
-       << "}";
+       << "\t\"control_x\": [" << problem.GetControlPoints().format(one_row_fmt) << "],\n"
+       << "\t\"control_y\": [" << solution.control_vals_.format(one_row_fmt) << "],\n"
+       << "\t\"coefs\":[" << solution.coefs_.format(one_row_fmt) << "],\n"
+       << "\t\"x\": [" << denser_grid.format(one_row_fmt) << "],\n"
+       << "\t\"gt_y\": [" << gt_y << "],\n"
+       << "\t\"interp_y\": [" << interp_y << "],\n"
+       << "\t\"name\": " << p.GetFullName() << ",\n"
+       << "}"
+       << endl;   // Flush the stream.
 }
 
 
@@ -285,7 +286,8 @@ void Save(const Spline2DSolution<double> &solution, const string &out_dir) {
 int Spline2DExperiment(int argc, char **argv) {
   cout << "Starting 2D spline interpolation experiment." << endl;
 //  auto p = BuildFirstProblem(38, 38);
-  auto p = BuildSecondProblem(38, 38);
+  auto p = BuildSecondProblem(256, 256);
+  cout << "Will be solving problem: " << p.GetFullName() << endl;
 
   Eigen::IOFormat clean_fmt(2, 0, ", ", "\n", "[", "]");
   ESMatrix A = p.GetA();
@@ -298,24 +300,24 @@ int Spline2DExperiment(int argc, char **argv) {
     throw runtime_error("Could not factorize sparse linear system.");
   }
   auto u = p.Getu();
-  cout << u.rows() << " x " << u.cols() << endl;
-  cout << u << endl;
+//  cout << u.rows() << " x " << u.cols() << endl;
+//  cout << u << endl;
 
   Eigen::MatrixXd x = solver.solve(u);
   if (solver.info() != Eigen::Success) {
     throw runtime_error("System factorization OK, but could not solve.");
   }
 
-  cout << "Ax = :" << endl;
-  auto res = A * x - u;
-  cout << res << endl;
-  cout << "Result norm:" << endl;
-  cout << res.norm() << endl << endl;
-  assert (res.norm() < 1e-8);
+//  cout << "Ax = :" << endl;
+//  auto res = A * x - u;
+//  cout << res << endl;
+//  cout << "Result norm:" << endl;
+//  cout << res.norm() << endl << endl;
+//  assert (res.norm() < 1e-8);
 
   EMatrix x_square(x);
   x_square.resize(p.n_ + 2, p.m_ + 2);
-  cout << "Square sol: " << x_square << endl;
+//  cout << "Square sol: " << x_square << endl;
 //  cout << "Solution:" << x << "\n";
 
   Spline2DSolution<double> solution(u, x_square, p);
@@ -324,15 +326,14 @@ int Spline2DExperiment(int argc, char **argv) {
   cout << "Maximum error over control points: "<< max_err << "\n";
   // Note that these are EXACTLY the points we wish to fit to, so the error should be zero.
 
+  auto denser_grid = MeshGrid(
+      GetControlPoints1d(3 * p.n_ + 1, p.a_x_, p.b_x_),
+      GetControlPoints1d(3 * p.m_ + 1, p.a_y_, p.b_y_)
+  );
+  double max_err_dense = GetMaxError(denser_grid, p, solution);
+  cout << "Maximum error over denser grid: " << max_err_dense << "\n";
+
   Save(solution, FLAGS_out_dir);
-
-//  auto denser_grid = MeshGrid(
-//      GetControlPoints1d(3 * p.n_ + 1, p.a_x_, p.b_x_),
-//      GetControlPoints1d(3 * p.m_ + 1, p.a_y_, p.b_y_)
-//  );
-//  double max_err_dense = GetMaxError(denser_grid, p, solution);
-//  cout << "Maximum error over denser grid: " << max_err_dense << "\n";
-
   return 0;
 }
 
