@@ -17,6 +17,12 @@
 #include "src/common/serial_numerical.h"
 
 
+// X <---> N points.
+// Y <----> M points.
+//
+// N is the first dimension, M is the second dimension.
+
+
 DEFINE_string(out_dir, "../results/spline_2d_output", "The directory where to write experiment results (e.g., for "
                                                       "visualization).");
 
@@ -98,12 +104,17 @@ class Spline2DProblem {
 
   /// Returns the right-hand side vector used to solve the spline problem.
   Eigen::MatrixXd Getu() const {
-    auto xy_control = GetControlPoints();
+    Eigen::MatrixX2d xy_control = GetControlPoints();
     Eigen::MatrixXd result(xy_control.rows(), 1);
     for(uint32_t i = 0; i < xy_control.rows(); ++i) {
       result(i) = function_(xy_control(i, 0), xy_control(i, 1));
     }
+    assert(xy_control.rows() == result.rows());
     return result;
+  }
+
+  string GetFullName() const {
+    return Format("problem-%s-%04d", name_.c_str(), n_);
   }
 
  protected:
@@ -111,7 +122,7 @@ class Spline2DProblem {
   ESMatrix GetCoefMatrix(uint32_t sz) const {
     ESMatrix T(sz + 2, sz + 2);
     vector<ET> triplet_list;
-    triplet_list.reserve(sz + 2);
+    triplet_list.reserve(sz * 3 + 4);
     triplet_list.emplace_back(0, 0, 4);
     triplet_list.emplace_back(0, 1, 4);
     for (uint32_t i = 1; i < sz + 1; ++i) {
@@ -195,12 +206,86 @@ Spline2DProblem BuildSecondProblem(uint32_t n, uint32_t m) {
   return Spline2DProblem("sin-exp", n, m, function, 0.0, 0.0, M_PI * 4, M_PI);
 }
 
+double GetMaxError(const Eigen::MatrixX2d &cpoints, const Spline2DProblem& p, const Spline2DSolution<double>& s) {
+  double max_err = -1.0;
+  for(int i = 0; i < cpoints.rows(); ++i) {
+    double interp_val = s(cpoints(i, 0), cpoints(i, 1));
+    double true_val = p.function_(cpoints(i, 0), cpoints(i, 1));
+
+    double err = fabs(interp_val - true_val);
+    if (err > max_err) {
+      max_err = err;
+    }
+
+    cout << "Eval error at " << i << " (" << cpoints(i, 0) << ", " << cpoints(i, 1) << ") = " << err << endl;
+  }
+  return max_err;
+}
+
+
+void Save(const Spline2DSolution<double> &solution, const string &out_dir) {
+  cout << "Will save results to output directory: " << out_dir << endl;
+  auto &problem = solution.problem_;
+
+  // These are the points where we plot the interpolated result (and the GT fn).
+  int count = 3 * problem.n_ + 1;
+  if (count < 100) {
+    count = 100;
+  }
+
+  auto &p = solution.problem_;
+  auto denser_grid = MeshGrid(
+      GetControlPoints1d(3 * p.n_ + 1, p.a_x_, p.b_x_),
+      GetControlPoints1d(3 * p.m_ + 1, p.a_y_, p.b_y_)
+  );
+
+  // TODO(andreib): Use Eigen for these.
+  vector<double> gt_y;
+  vector<double> interp_y;
+  for(int i = 0; i < denser_grid.rows(); ++i) {
+    gt_y.push_back(problem.function_(denser_grid(i, 0), denser_grid(i, 1)));
+    interp_y.push_back(solution(denser_grid(i, 0), denser_grid(i, 1)));
+  }
+
+  if (! IsDir(out_dir)) {
+    if (mkdir(out_dir.c_str(), 0755) == -1) {
+      throw runtime_error(Format("Could not create output dir: %s from working dir %s.", out_dir.c_str(),
+                                 GetCWD().c_str()));
+    }
+    else {
+      cout << "Created output directory: " << out_dir << endl;
+    }
+  }
+
+  // Poor man's JSON dumping. Makes it super easy to load the results in Python and plot.
+  ofstream dump(Format("%s/output-%s.json", out_dir.c_str(), problem.GetFullName().c_str()));
+  if (!dump) {
+    throw runtime_error("Could not write output.");
+  }
+
+
+
+  Eigen::IOFormat one_row_fmt(2, 0, ", ", ", ", "[", "]");
+//  cout << Eigen::MatrixXd(A).format(clean_fmt) << endl;
+
+  dump << "{\n"
+       << "\t\"m\": " << problem.m_ << ",\n"
+       << "\t\"n\": " << problem.n_ << ",\n"
+       << "\t\"control_x\": [" << problem.GetControlPoints().format(one_row_fmt) << "]," << endl
+       << "\t\"control_y\": [" << solution.control_vals_.format(one_row_fmt) << "]," << endl
+       << "\t\"coefs\":[" << solution.coefs_.format(one_row_fmt) << "]," << endl
+       << "\t\"x\": [" << denser_grid.format(one_row_fmt) << "]," << endl
+       << "\t\"gt_y\": [" << gt_y << "]," << endl
+       << "\t\"interp_y\": [" << interp_y << "]" << endl
+       << "}";
+}
 
 
 
 int Spline2DExperiment(int argc, char **argv) {
   cout << "Starting 2D spline interpolation experiment." << endl;
-  auto p = BuildFirstProblem(10, 10);
+//  auto p = BuildFirstProblem(38, 38);
+  auto p = BuildSecondProblem(38, 38);
 
   Eigen::IOFormat clean_fmt(2, 0, ", ", "\n", "[", "]");
   ESMatrix A = p.GetA();
@@ -221,34 +306,32 @@ int Spline2DExperiment(int argc, char **argv) {
     throw runtime_error("System factorization OK, but could not solve.");
   }
 
+  cout << "Ax = :" << endl;
+  auto res = A * x - u;
+  cout << res << endl;
+  cout << "Result norm:" << endl;
+  cout << res.norm() << endl << endl;
+  assert (res.norm() < 1e-8);
 
-  cout << "will reshape solution" << endl;
   EMatrix x_square(x);
   x_square.resize(p.n_ + 2, p.m_ + 2);
   cout << "Square sol: " << x_square << endl;
-
-  cout << "Solution:" << x << "\n";
+//  cout << "Solution:" << x << "\n";
 
   Spline2DSolution<double> solution(u, x_square, p);
-
   auto cpoints = p.GetControlPoints();
-  double max_err = -1.0;
-  for(int i = 0; i < cpoints.rows(); ++i) {
-    cout << "Eval error at " << i << ", i.e. (" << cpoints(i, 0) << ", " << cpoints(i, 1) << ")" << endl;
-    double interp_val = solution(cpoints(i, 0), cpoints(i, 1));
-    double true_val = p.function_(cpoints(i, 0), cpoints(i, 1));
-
-    double err = fabs(interp_val - true_val);
-    if (err > max_err) {
-      max_err = err;
-    }
-  }
+  double max_err = GetMaxError(cpoints, p, solution);
   cout << "Maximum error over control points: "<< max_err << "\n";
+  // Note that these are EXACTLY the points we wish to fit to, so the error should be zero.
 
-  // TODO compute error on denser grid!
-//  auto denser_grid = TODO
+  Save(solution, FLAGS_out_dir);
 
-//  auto solution = Solve(p);
+//  auto denser_grid = MeshGrid(
+//      GetControlPoints1d(3 * p.n_ + 1, p.a_x_, p.b_x_),
+//      GetControlPoints1d(3 * p.m_ + 1, p.a_y_, p.b_y_)
+//  );
+//  double max_err_dense = GetMaxError(denser_grid, p, solution);
+//  cout << "Maximum error over denser grid: " << max_err_dense << "\n";
 
   return 0;
 }
