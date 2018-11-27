@@ -26,7 +26,7 @@ set(COMMON_SOURCES
         src/common/utils.cpp
         src/common/matrix.cpp
         src/common/parallel_numerical.cpp
-        src/common/serial_numerical.cpp)
+        src/common/serial_numerical.cpp src/common/mpi_helpers.h)
 
 # Assignment 1
 add_executable(globsum src/a01/globsum.cpp ${COMMON_SOURCES})

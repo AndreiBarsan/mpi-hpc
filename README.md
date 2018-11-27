@@ -25,6 +25,7 @@ cd build && cmake -DEXPORT_BUILD_DIR=ON .. && make -j4
  solver with those produced by an industry-standard solver provided by Eigen. A reasonably new version can be 
  installed on a Debian-like distribution by running `sudo apt install libeigen3-dev`. Note that Eigen3 is a 
  header-only library, so it doesn't need to be compiled per se, or linked, just included.
+ - Eigen 3 is *required* for Assignment 3!
  
  
 ### Running the Code

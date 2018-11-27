@@ -11,10 +11,11 @@
 #include <Eigen/SparseCore>
 #include <Eigen/SparseLU>
 #include <unsupported/Eigen/KroneckerProduct>
+#include <gflags/gflags.h>
 
-#include "gflags/gflags.h"
-#include "src/common/utils.h"
+#include "src/common/mpi_helpers.h"
 #include "src/common/serial_numerical.h"
+#include "src/common/utils.h"
 
 
 // X <---> N points.
@@ -27,6 +28,8 @@ DEFINE_string(out_dir, "../results/spline_2d_output", "The directory where to wr
                                                       "visualization).");
 
 // TODO(andreib): Stick Eigen stuff in a precompiled header for faster builds!
+// TODO(andreib): Automate LaTeX table generation for an experiment.
+// TODO(andreib): Maybe show some of the heatmaps in the assignment report.
 
 // Feedback from second assignment's coding part:
 //   TODO(andreib): Write down feedback once you get it.
@@ -38,6 +41,13 @@ DEFINE_string(out_dir, "../results/spline_2d_output", "The directory where to wr
 // TODO(andreib): Measure the parallel execution time taken for the solution of the bi-quadratic spline interpolation
 // system with the two alternatives. (Do not include the time to calculate the errors.)
 // TODO(andreib): When measuring time, measure in chunks so you can see which parts of the method are the most intense.
+
+enum DeBoorMethod {
+  /// This represents "Alternative 1" from the slides.
+  kLinSolveBothDimensions = 0,
+  /// This represents "Alternative 2" from the slides.
+  kLinSolveOneDimension
+};
 
 using namespace std;
 
@@ -281,16 +291,83 @@ void Save(const Spline2DSolution<double> &solution, const string &out_dir) {
        << endl;   // Flush the stream.
 }
 
+void BroadcastEigenSparse(ESMatrix &A, double *d_buffer, int *i_buffer) {
+  MPI_SETUP;
+  // TODO(andreib): Make this method more generic.
+  // TODO(andreib): Use single send with *void data / structs in MPI.
+  // TODO(andreib): Assert the matrix is compressed!
+
+  i_buffer = new int[3];
+
+  int sender = 0; // TODO generic
+  int nnz = -1;
+  if (local_id == sender) {
+    nnz = A.nonZeros();
+    i_buffer[0] = A.rows();
+    i_buffer[1] = A.cols();
+    i_buffer[2] = nnz;
+  }
+  MPI_Bcast(i_buffer, 3, MPI_LONG, 0, MPI_COMM_WORLD);
+
+  if (local_id != sender) {
+    A.resize(i_buffer[0], i_buffer[1]);
+    A.reserve(i_buffer[2]);
+    nnz = i_buffer[2];
+  }
+
+  MPI_Bcast(A.valuePtr(), nnz, MPI_DOUBLE, 0, MPI_COMM_WORLD);    // TODO async
+  MPI_Bcast(A.innerIndexPtr(), nnz, MPI_INT, 0, MPI_COMM_WORLD);  // TODO async
+  MPI_Bcast(A.outerIndexPtr(), i_buffer[1], MPI_INT, 0, MPI_COMM_WORLD);
+
+  if (local_id != sender) {
+    // outerIdxPtr()[cols] = nnz
+    A.outerIndexPtr()[i_buffer[1]] = nnz;
+  }
+
+  delete[] i_buffer;    // TODO eliminate this
+}
 
 
-int Spline2DExperiment(int argc, char **argv) {
-  cout << "Starting 2D spline interpolation experiment." << endl;
+void DeBoorDecomposition(const ESMatrix &A, const Eigen::MatrixXd &u, const DeBoorMethod &method) {
+  MPI_SETUP;
+
+  auto send_buffer = make_unique<double[]>(u.rows() * 2);
+  auto recv_buffer = make_unique<double[]>(u.rows() * 2);
+
+  // TODO test this with unknown a priori size
+  int sz = 30;
+  ESMatrix m;
+  MASTER {
+    m.resize(sz, sz);
+    for(int i = 0; i < sz; i+= 2) {
+      m.insert(i, 13) = 42.0;
+      m.insert(i, 7) = 13.0;
+    }
+    // This is very important if we want to send this matrix over MPI!
+    m.makeCompressed();
+  }
+
+  BroadcastEigenSparse(m, nullptr, nullptr);
+  cout << local_id << " bcast OK." << endl;
+  std::this_thread::sleep_for(std::chrono::seconds(local_id * 2));
+  cout << local_id << "matrix:\n" << m << endl;
+}
+
+
+
+int Spline2DExperiment() {
+  MPI_SETUP;
+
 //  auto p = BuildFirstProblem(38, 38);
   auto p = BuildSecondProblem(256, 256);
-  cout << "Will be solving problem: " << p.GetFullName() << endl;
 
-  Eigen::IOFormat clean_fmt(2, 0, ", ", "\n", "[", "]");
+  MASTER {
+    cout << "Starting 2D spline interpolation experiment." << endl;
+    cout << "Will be solving problem: " << p.GetFullName() << endl;
+  }
+
   ESMatrix A = p.GetA();
+//  Eigen::IOFormat clean_fmt(2, 0, ", ", "\n", "[", "]");
 //  cout << Eigen::MatrixXd(A).format(clean_fmt) << endl;
 
   // TODO(andreib): Add enum for all available solvers.
@@ -320,24 +397,33 @@ int Spline2DExperiment(int argc, char **argv) {
 //  cout << "Square sol: " << x_square << endl;
 //  cout << "Solution:" << x << "\n";
 
-  Spline2DSolution<double> solution(u, x_square, p);
-  auto cpoints = p.GetControlPoints();
-  double max_err = GetMaxError(cpoints, p, solution);
-  cout << "Maximum error over control points: "<< max_err << "\n";
-  // Note that these are EXACTLY the points we wish to fit to, so the error should be zero.
+  // TODO(andreib): Compare DeBoor result with serial result and assert!
+  DeBoorDecomposition(A, u, DeBoorMethod::kLinSolveBothDimensions);
 
-  auto denser_grid = MeshGrid(
-      GetControlPoints1d(3 * p.n_ + 1, p.a_x_, p.b_x_),
-      GetControlPoints1d(3 * p.m_ + 1, p.a_y_, p.b_y_)
-  );
-  double max_err_dense = GetMaxError(denser_grid, p, solution);
-  cout << "Maximum error over denser grid: " << max_err_dense << "\n";
+  // Compute errors and save the results from the master (0) node.
+  MASTER {
+    Spline2DSolution<double> solution(u, x_square, p);
+    auto cpoints = p.GetControlPoints();
+    double max_err = GetMaxError(cpoints, p, solution);
+    cout << "Maximum error over control points: " << max_err << "\n";
+    // Note that these are EXACTLY the points we wish to fit to, so the error should be zero.
 
-  Save(solution, FLAGS_out_dir);
+    auto denser_grid = MeshGrid(
+        GetControlPoints1d(3 * p.n_ + 1, p.a_x_, p.b_x_),
+        GetControlPoints1d(3 * p.m_ + 1, p.a_y_, p.b_y_)
+    );
+    double max_err_dense = GetMaxError(denser_grid, p, solution);
+    cout << "Maximum error over denser grid: " << max_err_dense << "\n";
+
+    Save(solution, FLAGS_out_dir);
+  }
   return 0;
 }
 
 int main(int argc, char **argv) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
-  return Spline2DExperiment(argc, argv);
+  MPI_Init(&argc, &argv);
+  int exit_code = Spline2DExperiment();
+  MPI_Finalize();
+  return exit_code;
 }
