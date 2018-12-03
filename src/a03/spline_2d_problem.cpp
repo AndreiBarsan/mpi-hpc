@@ -166,6 +166,17 @@ class Spline2DProblem {
   const double step_size_y_;
 };
 
+/// Contains the errors of a particular solution to a spline problem.
+template<typename T>
+struct Spline2DErrors {
+  Spline2DErrors(double max_over_control_points, double max_over_dense_points)
+    : max_over_control_points(max_over_control_points),
+      max_over_dense_points(max_over_dense_points) {}
+
+  const double max_over_control_points;
+  const double max_over_dense_points;
+};
+
 template <typename T>
 class Spline2DSolution {
  public:
@@ -192,6 +203,24 @@ class Spline2DSolution {
     return val;
   }
 
+  Spline2DErrors<T> ComputeErrors() const {
+    double kMaxControlPointError = 1e-12;
+    const Spline2DProblem &problem = this->problem_;
+    auto cpoints = problem.GetControlPoints();
+    double max_err = GetMaxError(cpoints, problem, *this);
+    // Note that these are EXACTLY the points we wish to fit to, so the error should be zero.
+    if (max_err > kMaxControlPointError) {
+      throw runtime_error(Format("Found unusually large error in a control point. Maximum error over control points "
+                                 "was %.6f, larger than the threshold of %.6f.", max_err, kMaxControlPointError));
+    }
+    auto denser_grid = MeshGrid(
+        GetControlPoints1d(3 * problem.n_ + 1, problem.a_x_, problem.b_x_),
+        GetControlPoints1d(3 * problem.m_ + 1, problem.a_y_, problem.b_y_)
+    );
+    double max_err_dense = GetMaxError(denser_grid, problem, *this);
+    return Spline2DErrors<T>(max_err, max_err_dense);
+  }
+
   const Eigen::MatrixXd control_vals_;
   const EMatrix coefs_;
   const Spline2DProblem problem_;
@@ -206,7 +235,6 @@ class Spline2DSolution {
     }
     return coefs_(i, j);
   }
-
 };
 
 Spline2DProblem BuildFirstProblem(uint32_t n, uint32_t m) {
@@ -229,8 +257,6 @@ double GetMaxError(const Eigen::MatrixX2d &cpoints, const Spline2DProblem& p, co
     if (err > max_err) {
       max_err = err;
     }
-
-//    cout << "Eval error at " << i << " (" << cpoints(i, 0) << ", " << cpoints(i, 1) << ") = " << err << endl;
   }
   return max_err;
 }
@@ -291,68 +317,24 @@ void Save(const Spline2DSolution<double> &solution, const string &out_dir) {
        << endl;   // Flush the stream.
 }
 
-// TODO: method to bcast dense matrix too!
-
-/// Broadcasts the given sparse Eigen matrix using MPI, starting from the given node.
-/// \param A        The sparse matrix to broadcast.
-/// \param sender   The index of the root node.
-void BroadcastEigenSparse(ESMatrix &A, int sender = 0) {
-  MPI_SETUP;
-  // TODO(andreib): Make this method more generic.
-  // TODO-LOW(andreib): Use single send with *void data / structs in MPI.
-  // TODO(andreib): Assert the matrix is compressed!
-
-  if (! A.isCompressed()) {
-    throw runtime_error("Can only broadcast a sparse matrix with compressed storage!");
-  }
-  int i_buffer[3];
-  int total_element_count = -1;
-  if (local_id == sender) {
-    total_element_count = static_cast<int>(A.nonZeros());
-    i_buffer[0] = A.rows();
-    i_buffer[1] = A.cols();
-    i_buffer[2] = total_element_count;
-  }
-  MPI_Bcast(i_buffer, 3, MPI_INT, sender, MPI_COMM_WORLD);
-  int n_rows = i_buffer[0];
-  int n_cols = i_buffer[1];
-  total_element_count = i_buffer[2];
-
-  if (local_id != sender) {
-    A.resize(n_rows, n_cols);
-    A.reserve(total_element_count);
-  }
-  // TODO-LOW(andreib): Perform an asynchronous broadcast.
-  MPI_Bcast(A.valuePtr(), total_element_count, MPI_DOUBLE, sender, MPI_COMM_WORLD);
-  MPI_Bcast(A.innerIndexPtr(), total_element_count, MPI_INT, sender, MPI_COMM_WORLD);
-  MPI_Bcast(A.outerIndexPtr(), n_cols, MPI_INT, sender, MPI_COMM_WORLD);
-
-  if (local_id != sender) {
-    A.outerIndexPtr()[n_cols] = total_element_count;
-  }
-}
-
-/// Solves the given problem serially using a sparse LU solver built into Eigen.
-/// Useful for checking the correctness of more sophisticated solvers.
+/// Solves the given problem serially using a sparse solver built into Eigen.
+/// Useful for checking the correctness of more sophisticated solvers but much slower than DeBoor.
 Spline2DSolution<double> SolveNaive(const Spline2DProblem &problem) {
   ESMatrix A = problem.GetA();
   Eigen::VectorXd u = problem.Getu();
-  //  Eigen::IOFormat clean_fmt(2, 0, ", ", "\n", "[", "]");
-  //  cout << Eigen::MatrixXd(A).format(clean_fmt) << endl;
 
   // Note that we ALWAYS compute the solution using the generic Eigen solver so that we can verify our answers.
-  // TODO(andreib): Add enum for all available solvers.
   Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
+  // We'd first need to scale the coef matrix to use this. Needs symmetric positive definite coef matrix.
+  // Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver;
   solver.compute(A);
   if (solver.info() != Eigen::Success) {
     throw runtime_error("Could not factorize sparse linear system.");
   }
-
   Eigen::MatrixXd x = solver.solve(u);
   if (solver.info() != Eigen::Success) {
     throw runtime_error("System factorization OK, but could not solve.");
   }
-
   EMatrix x_square(x);
   x_square.resize(problem.n_ + 2, problem.m_ + 2);
   return Spline2DSolution<double>(u, x_square, problem);
@@ -364,58 +346,65 @@ Spline2DSolution<double> SolveSerialDeBoor(const Spline2DProblem &problem) {
   return Spline2DSolution<double>(problem.Getu(), deboor_x, problem);
 }
 
+Spline2DSolution<double> Solve(const Spline2DProblem &problem, SolverType solver_type) {
+  switch (solver_type) {
+    case kNaiveSparseLU:
+      return SolveNaive(problem);
+    case kSerialDeBoor:
+      return SolveSerialDeBoor(problem);
+    case kParallelDeBoorA:
+//      return SolveParallelDeBoor(problem);
+    case kParallelDeBoorB:
+        throw runtime_error("Not supported yet.");
+    default:
+      throw runtime_error(Format("Unknown solver type requested: %d", solver_type));
+  }
+}
 
 int Spline2DExperiment() {
   MPI_SETUP;
-  SolverType solver_type = GetSolverType(FLAGS_method);
+  string solver_name = FLAGS_method;
+  SolverType solver_type = GetSolverType(solver_name);
   if (solver_type == SolverType::kParallelDeBoorA || solver_type == SolverType::kParallelDeBoorB) {
     throw runtime_error("Parallel DeBoor solvers not implemented yet!");
   }
 
 //  int problem_sizes[] = {30, 62, 126, 254, 510};
-  int problem_sizes[] = {62}; // For debugging.
+  int problem_sizes[] = {62}; // For debugging (126+ problems are VERY slow with generic sparse LU).
   for (const int& problem_size : problem_sizes) {
-    // TODO(andreib): Solve both.
-    auto alpha = BuildFirstProblem(problem_size, problem_size);
-    auto beta = BuildSecondProblem(problem_size, problem_size);
+    for (const auto& pp : {BuildFirstProblem(problem_size, problem_size),
+                                BuildSecondProblem(problem_size, problem_size)}) {
 
-    MASTER {
-      cout << "Starting 2D spline interpolation experiment." << endl;
-      cout << "Will be solving problem: " << beta.GetFullName() << endl;
-    }
-
-    auto naive_solution = SolveNaive(beta);
-    // TODO(andreib): Probably want to do a switch over solver type here.
-    auto deboor_serial_solution = SolveSerialDeBoor(beta);
-
-    // TODO(andreib): Compare DeBoor result with serial result and assert!
-    Eigen::MatrixXd delta = naive_solution.coefs_ - deboor_serial_solution.coefs_;
-    delta.resize(beta.S.rows(), beta.S.cols());
-    cout << "Delta vector norm: " << delta.norm() << endl;
-
-
-    // TODO: this should be a method!
-    // Compute errors and save the results from the master (0) node.
-    MASTER {
-      double max_err_threshold = 1e-12;
-      Spline2DSolution<double> &solution = deboor_serial_solution;
-      auto cpoints = beta.GetControlPoints();
-      double max_err = GetMaxError(cpoints, beta, solution);
-      cout << "Maximum error over control points: " << max_err << "\n";
-      // Note that these are EXACTLY the points we wish to fit to, so the error should be zero.
-      if (max_err > max_err_threshold) {
-        throw runtime_error(Format("Found unusually large error in a control point. Maximum error over control points "
-                                   "was %.6f, larger than the threshold of %.6f.", max_err, max_err_threshold));
+      auto beta = BuildSecondProblem(problem_size, problem_size);
+      MASTER {
+        cout << "Starting 2D spline interpolation experiment." << endl;
+        cout << "Will be solving problem: " << beta.GetFullName() << endl;
+        cout << "First computing naive solution..." << endl;
       }
 
-      auto denser_grid = MeshGrid(
-          GetControlPoints1d(3 * beta.n_ + 1, beta.a_x_, beta.b_x_),
-          GetControlPoints1d(3 * beta.m_ + 1, beta.a_y_, beta.b_y_)
-      );
-      double max_err_dense = GetMaxError(denser_grid, beta, solution);
-      cout << "Maximum error over denser grid: " << max_err_dense << "\n";
+      auto naive_solution = SolveNaive(beta);
+      MASTER { cout << "Naive sparse solution computed." << endl; }
+      auto smart_solution = Solve(beta, solver_type);
 
-      Save(solution, FLAGS_out_dir);
+      Eigen::MatrixXd delta = naive_solution.coefs_ - smart_solution.coefs_;
+      delta.resize(beta.S.rows(), beta.S.cols());
+      double delta_norm = delta.norm();
+      const double kDeltaNormEps = 1e-8;
+      if (delta_norm > kDeltaNormEps) {
+        throw runtime_error(Format("Computed solution coefficients from method [%s] differs from the reference naive "
+                                   "solution by [%.10lf], more than the threshold epsilon of [%.10lf].",
+                                   solver_name.c_str(), delta_norm, kDeltaNormEps));
+      }
+
+      // Compute errors and save the results from the master (0) node.
+      MASTER {
+        cout << "Solver: " << solver_name << " coefficient check vs. reference solution OK. Checking max error.\n";
+        auto errors = smart_solution.ComputeErrors();
+        cout << "Maximum error over control points: " << errors.max_over_control_points << "\n";
+        cout << "Maximum error over denser grid: " << errors.max_over_dense_points << "\n";
+        Save(smart_solution, FLAGS_out_dir);
+        cout << "Solution saved as JSON.\n";
+      }
     }
   }
   return 0;

@@ -26,7 +26,7 @@ set(COMMON_SOURCES
         src/common/utils.cpp
         src/common/matrix.cpp
         src/common/parallel_numerical.cpp
-        src/common/serial_numerical.cpp src/common/mpi_helpers.h)
+        src/common/serial_numerical.cpp src/common/mpi_helpers.h src/common/mpi_eigen_helpers.cpp)
 
 # Assignment 1
 add_executable(globsum src/a01/globsum.cpp ${COMMON_SOURCES})
@@ -35,8 +35,10 @@ add_executable(ring src/a01/ring.cpp ${COMMON_SOURCES})
 # Assignment 2
 add_executable(spline_problem ${COMMON_SOURCES} src/a02/spline_problem.cpp)
 # Assignment 3
-add_executable(spline_2d_problem ${COMMON_SOURCES} src/a03/spline_2d_problem.cpp src/a03/deboor_serial.h)
+add_executable(spline_2d_problem ${COMMON_SOURCES} src/a03/spline_2d_problem.cpp)
+add_executable(mpi_eigen_helpers_tests ${COMMON_SOURCES} src/common/mpi_eigen_helpers_tests.cpp)
 
+# This fixes some strange CMake errors caused by unusual spaces in these variables.
 string(STRIP "${MPI_CXX_LIBRARIES}" MPI_CXX_LIBRARIES)
 string(STRIP "${MPI_CXX_LINK_FLAGS}" MPI_CXX_LINK_FLAGS)
 
@@ -56,3 +58,7 @@ target_link_libraries(spline_problem ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} 
 
 target_compile_options(spline_2d_problem PRIVATE ${MPI_CXX_COMPILE_FLAGS})
 target_link_libraries(spline_2d_problem ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} ${LIBS})
+
+# Tests
+target_compile_options(mpi_eigen_helpers_tests PRIVATE ${MPI_CXX_COMPILE_FLAGS})
+target_link_libraries(mpi_eigen_helpers_tests ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} ${LIBS})
