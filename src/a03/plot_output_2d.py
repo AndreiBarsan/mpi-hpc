@@ -1,5 +1,4 @@
 """Plots the output produced by spline_problem.cpp."""
-
 import json
 import os
 import sys

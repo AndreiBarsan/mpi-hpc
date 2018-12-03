@@ -1,5 +1,7 @@
 #include "parallel_numerical.h"
 
+#include <map>
+
 #include "Eigen/LU"
 
 // Known to be ALWAYS zero: B_i2, C_i2.

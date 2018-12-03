@@ -19,7 +19,8 @@ endif()
 include_directories(SYSTEM ${MPI_INCLUDE_PATH} .)
 
 set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -msse3 -Wall -Wextra -Wno-reorder -std=c++17")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -msse3 -Wall -Wextra -Wno-reorder -std=c++17")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-reorder -std=c++17")
 
 # Assignment 1 Executables
 set(COMMON_SOURCES
@@ -40,17 +41,19 @@ add_executable(spline_2d_problem ${COMMON_SOURCES} src/a03/spline_2d_problem.cpp
 string(STRIP "${MPI_CXX_LIBRARIES}" MPI_CXX_LIBRARIES)
 string(STRIP "${MPI_CXX_LINK_FLAGS}" MPI_CXX_LINK_FLAGS)
 
+set(LIBS gflags Eigen3::Eigen) #stdc++fs)
+
 target_compile_options(globsum PRIVATE ${MPI_CXX_COMPILE_FLAGS})
-target_link_libraries(globsum ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags Eigen3::Eigen stdc++fs)
+target_link_libraries(globsum ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} ${LIBS})
 
 target_compile_options(fanout PRIVATE ${MPI_CXX_COMPILE_FLAGS})
-target_link_libraries(fanout ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags Eigen3::Eigen stdc++fs)
+target_link_libraries(fanout ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} ${LIBS})
 
 target_compile_options(ring PRIVATE ${MPI_CXX_COMPILE_FLAGS})
-target_link_libraries(ring ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags Eigen3::Eigen stdc++fs)
+target_link_libraries(ring ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} ${LIBS})
 
 target_compile_options(spline_problem PRIVATE ${MPI_CXX_COMPILE_FLAGS})
-target_link_libraries(spline_problem ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags Eigen3::Eigen stdc++fs)
+target_link_libraries(spline_problem ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} ${LIBS})
 
 target_compile_options(spline_2d_problem PRIVATE ${MPI_CXX_COMPILE_FLAGS})
-target_link_libraries(spline_2d_problem ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} gflags Eigen3::Eigen stdc++fs)
+target_link_libraries(spline_2d_problem ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS} ${LIBS})
