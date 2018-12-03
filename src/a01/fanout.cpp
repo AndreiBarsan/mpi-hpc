@@ -6,7 +6,7 @@
 #include "gflags/gflags.h"
 #include "mpi.h"
 
-#include "src/common/utils.h"
+#include "common/utils.h"
 
 DEFINE_int32(npin, 0, "The processor which is the origin in the fan-out process.");
 

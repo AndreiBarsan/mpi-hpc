@@ -16,13 +16,12 @@ else()
     message("Eigen3 not found. Will not perform error checking.")
 endif()
 
-include_directories(SYSTEM ${MPI_INCLUDE_PATH} .)
+include_directories(SYSTEM ${MPI_INCLUDE_PATH} src)
 
 set(CMAKE_CXX_STANDARD 14)
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -msse3 -Wall -Wextra -Wno-reorder -std=c++17")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-reorder -std=c++17")
 
-# Assignment 1 Executables
 set(COMMON_SOURCES
         src/common/utils.cpp
         src/common/matrix.cpp
@@ -36,7 +35,7 @@ add_executable(ring src/a01/ring.cpp ${COMMON_SOURCES})
 # Assignment 2
 add_executable(spline_problem ${COMMON_SOURCES} src/a02/spline_problem.cpp)
 # Assignment 3
-add_executable(spline_2d_problem ${COMMON_SOURCES} src/a03/spline_2d_problem.cpp)
+add_executable(spline_2d_problem ${COMMON_SOURCES} src/a03/spline_2d_problem.cpp src/a03/deboor_serial.h)
 
 string(STRIP "${MPI_CXX_LIBRARIES}" MPI_CXX_LIBRARIES)
 string(STRIP "${MPI_CXX_LINK_FLAGS}" MPI_CXX_LINK_FLAGS)

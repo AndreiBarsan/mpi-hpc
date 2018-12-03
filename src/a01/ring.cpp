@@ -7,7 +7,7 @@
 #include "gflags/gflags.h"
 #include "mpi.h"
 
-#include "src/common/utils.h"
+#include "common/utils.h"
 
 
 using namespace std;

@@ -1,23 +1,23 @@
 //
-// Entry point for solving quadratic spline interpolation.
+// Entry point for solving 1D quadratic spline interpolation.
 //
+
 #include <chrono>
 #include <cmath>
 #include <iostream>
 #include <vector>
 #include <fstream>
 #include <functional>
-#include <src/common/utils.h>
 #include <thread>
 #include <tuple>
 
 #include "gflags/gflags.h"
 #include <Eigen/QR>
 
-#include "src/common/matrix.h"
-#include "src/common/serial_numerical.h"
-#include "src/common/parallel_numerical.h"
-#include "src/common/utils.h"
+#include "common/matrix.h"
+#include "common/serial_numerical.h"
+#include "common/parallel_numerical.h"
+#include "common/utils.h"
 
 DEFINE_string(out_dir, "../results/spline_output", "The directory where to write experiment results (e.g., for "
                                                    "visualization).");

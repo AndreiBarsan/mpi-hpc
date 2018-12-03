@@ -5,13 +5,13 @@
 #include <sstream>
 #include <vector>
 #include <fstream>
-#include <src/common/utils.h>
 #include <thread>
 #include <tuple>
 
-#include "gflags/gflags.h"
+#include <gflags/gflags.h>
+#include <mpi.h>
 
-#include "mpi.h"
+#include "common/utils.h"
 
 static const int NO_TAG = 0;
 static const unsigned int RANDOM_SEED = 1234;

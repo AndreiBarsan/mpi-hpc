@@ -1,6 +1,7 @@
-//
-// Entry point and problem definitions for solving 2D quadratic spline interpolation.
-//
+/**
+ *  \file spline_2d_problem.cpp
+ *  \brief Entry point and problem definitions for solving 2D quadratic spline interpolation.
+ */
 
 #include <cmath>
 #include <iomanip>
@@ -13,10 +14,10 @@
 #include <unsupported/Eigen/KroneckerProduct>
 #include <gflags/gflags.h>
 
-#include "src/common/mpi_helpers.h"
-#include "src/common/serial_numerical.h"
-#include "src/common/utils.h"
-
+#include "common/mpi_helpers.h"
+#include "common/serial_numerical.h"
+#include "common/utils.h"
+#include "a03/deboor_serial.h"
 
 // X <---> N points.
 // Y <---> M points.
@@ -50,47 +51,10 @@ DEFINE_string(method, "eigen", "Name of the method used to solve the spline prob
 // system with the two alternatives. (Do not include the time to calculate the errors.)
 // TODO(andreib): When measuring time, measure in chunks so you can see which parts of the method are the most intense.
 
-enum SolverType {
-  /// Uses a serial solver built into Eigen.
-  kNaiveSparseLU = 0,
-  /// Uses a serial DeBoor decomposition.
-  kSerialDeBoor,
-  /// Uses parallel DeBoor method A.
-  kParallelDeBoorA,
-  /// Uses parallel DeBoor method B.
-  kParallelDeBoorB
-};
-
-SolverType GetSolverType(const string &input) {
-  if (input == "eigen") {
-    return SolverType::kNaiveSparseLU;
-  }
-  else if (input == "serial-deboor") {
-    return SolverType::kSerialDeBoor;
-  }
-  else if (input == "parallel-deboor-a") {
-    return SolverType::kParallelDeBoorA;
-  }
-  else if (input == "parallel-deboor-b") {
-    return SolverType::kParallelDeBoorB;
-  }
-}
-
-enum DeBoorMethod {
-  /// This represents "Alternative 1" from the slides.
-  kLinSolveBothDimensions = 0,
-  /// This represents "Alternative 2" from the slides.
-  kLinSolveOneDimension
-};
-
 using namespace std;
 
 /// Represents a 2D scalar-valued function which we use in our 2D interpolation problems.
 using Scalar2DFunction = function<double(double, double)>;
-using ESMatrix = Eigen::SparseMatrix<double>;
-using EMatrix = Eigen::MatrixXd;
-using ET = Eigen::Triplet<double>;
-
 
 Eigen::ArrayXd GetControlPoints1d(uint32_t n, double a, double b) {
   using namespace Eigen;
@@ -368,115 +332,13 @@ void BroadcastEigenSparse(ESMatrix &A, int sender = 0) {
   }
 }
 
-/// Solves a linear system defined as KroneckerProduct(A, B) x = u serially using DeBoor decomposition.
-/// \param A First component of the Kronecker product, [n x n].
-/// \param B Second component of the Kronecker product, [m x m].
-/// \param u Right-had side column vector, [nm x 1].
-/// \param method TODO(andreib): Remove this in serial context.
-/// \return The [nm x 1] solution vector.
-Eigen::VectorXd DeBoorDecomposition(const ESMatrix &A,
-                                    const ESMatrix &B,
-                                    const Eigen::VectorXd &u,
-                                    const DeBoorMethod &method) {
-  using namespace Eigen;
-  MPI_SETUP;
-  MPI_Barrier(MPI_COMM_WORLD);
-
-//  auto send_buffer = make_unique<double[]>(u.rows() * 2);
-//  auto recv_buffer = make_unique<double[]>(u.rows() * 2);
-//  int sz = 8;
-//  ESMatrix mat;
-//  MASTER {
-//    mat.resize(sz, sz);
-//    for(int i = 0; i < sz; i+= 2) {
-//      mat.insert(i, 6) = 42.0;
-//      mat.insert(i, 3) = 13.0;
-//    }
-//    // This is very important if we want to send this matrix over MPI!
-//    mat.makeCompressed();
-//  }
-//
-//  cout << "Doing test matrix broadcast to all our " << n_procs << " processors.\n";
-//  BroadcastEigenSparse(mat);
-//  cout << local_id << " bcast OK." << endl;
-//  std::this_thread::sleep_for(std::chrono::milliseconds(local_id * 25));
-//  cout << local_id << "'s matrix:\n" << mat << endl;
-//  MPI_Barrier(MPI_COMM_WORLD);
-
-  int n = A.rows();
-  int m = B.rows();
-  assert(A.rows() == A.cols());
-  assert(B.rows() == B.cols());
-  cout << "Asserts OK" << endl;
-
-  SparseLU<SparseMatrix<double>> A_solver;
-  A_solver.compute(A);
-  SparseLU<SparseMatrix<double>> B_solver;
-  B_solver.compute(B);
-
-  // TODO better name for this n x m matrix which is the resized RHS.
-  MatrixXd G(u);
-  cout << "Will resize matrix: " << n << " x " << m << endl;
-  G.resize(n, m);
-  cout << "Resize OK" << endl;
-//  cout << G << endl;
-
-  // This loop can be performed in parallel.
-  MatrixXd D = MatrixXd::Zero(n, m);
-  for (int i = 0; i < n; ++i) {
-    // g_i is is the ith row in the g matrix.
-    VectorXd g_i = G.block(i, 0, 1, m).transpose();
-//    VectorXd g_i = G.block(i, 0, 1, m).transpose();
-//    cout << g_i.rows() << " x " << g_i.cols() << endl;
-// WHY THE FUCK DOES THIS WORK WITH AND WITHOUT TRANSPOSE BUT PRODUCE DIFFERENT RESULTS?
-    D.row(i) = B_solver.solve(g_i).transpose();
-  }
-
-  // This will be a communication bottleneck.
-  // TODO(andreib): Don't do this and just grab cols in the next loop.
-//  D.transposeInPlace();
-  // Now D's rows are d'_i, not d_i.
-
-//  cout << "D:" << endl;
-//  cout << D << endl;
-//
-//  cout << "G:" << endl;
-//  cout << G << endl;
-
-  MatrixXd C = MatrixXd::Zero(n, m);
-  for (int j = 0; j < m; ++j) {
-    VectorXd d_prime_i = D.col(j); //.transpose();
-    C.col(j) = A_solver.solve(d_prime_i);
-  }
-  cout << "Done doing DeBoor decomposition." << endl;
-
-  C.resize(n * m, 1);
-  return C;
-}
-
-
-
-int Spline2DExperiment() {
-  MPI_SETUP;
-
-  SolverType solver_type = GetSolverType(FLAGS_method);
-  if (solver_type == SolverType::kParallelDeBoorA || solver_type == SolverType::kParallelDeBoorB) {
-    throw runtime_error("Parallel DeBoor solvers not implemented yet!");
-  }
-
-//  auto p = BuildFirstProblem(38, 38);
-//  auto p = BuildSecondProblem(38, 38);
-  auto p = BuildSecondProblem(62, 62);
-
-  MASTER {
-    cout << "Starting 2D spline interpolation experiment." << endl;
-    cout << "Will be solving problem: " << p.GetFullName() << endl;
-  }
-
-  ESMatrix A = p.GetA();
-  Eigen::VectorXd u = p.Getu();
-//  Eigen::IOFormat clean_fmt(2, 0, ", ", "\n", "[", "]");
-//  cout << Eigen::MatrixXd(A).format(clean_fmt) << endl;
+/// Solves the given problem serially using a sparse LU solver built into Eigen.
+/// Useful for checking the correctness of more sophisticated solvers.
+Spline2DSolution<double> SolveNaive(const Spline2DProblem &problem) {
+  ESMatrix A = problem.GetA();
+  Eigen::VectorXd u = problem.Getu();
+  //  Eigen::IOFormat clean_fmt(2, 0, ", ", "\n", "[", "]");
+  //  cout << Eigen::MatrixXd(A).format(clean_fmt) << endl;
 
   // Note that we ALWAYS compute the solution using the generic Eigen solver so that we can verify our answers.
   // TODO(andreib): Add enum for all available solvers.
@@ -491,54 +353,70 @@ int Spline2DExperiment() {
     throw runtime_error("System factorization OK, but could not solve.");
   }
 
-//  cout << "Ax = :" << endl;
-//  auto res = A * x - u;
-//  cout << res << endl;
-//  cout << "Result norm:" << endl;
-//  cout << res.norm() << endl << endl;
-//  assert (res.norm() < 1e-8);
+  EMatrix x_square(x);
+  x_square.resize(problem.n_ + 2, problem.m_ + 2);
+  return Spline2DSolution<double>(u, x_square, problem);
+}
 
-  // TODO(andreib): Compare DeBoor result with serial result and assert!
-  Eigen::VectorXd deboor_x;
-  if (solver_type == SolverType::kSerialDeBoor) {
-    deboor_x = DeBoorDecomposition(p.S, p.T, u, DeBoorMethod::kLinSolveBothDimensions);
+Spline2DSolution<double> SolveSerialDeBoor(const Spline2DProblem &problem) {
+  Eigen::MatrixXd deboor_x = DeBoorDecomposition(problem.S, problem.T, problem.Getu(), DeBoorMethod::kLinSolveBothDimensions);
+  deboor_x.resize(problem.n_ + 2, problem.m_ + 2);
+  return Spline2DSolution<double>(problem.Getu(), deboor_x, problem);
+}
 
-    Eigen::MatrixXd delta = deboor_x - x;
-    cout << delta.rows() << ", " << delta.cols() << endl;
-    delta.resize(p.S.rows(), p.S.cols());
-    cout << "Delta vector norm: " << delta.norm() << endl;
 
-    cout << "Setting x = deboor_x !!!" << endl;
-    x = deboor_x;
+int Spline2DExperiment() {
+  MPI_SETUP;
+  SolverType solver_type = GetSolverType(FLAGS_method);
+  if (solver_type == SolverType::kParallelDeBoorA || solver_type == SolverType::kParallelDeBoorB) {
+    throw runtime_error("Parallel DeBoor solvers not implemented yet!");
   }
 
-  EMatrix x_square(x);
-  x_square.resize(p.n_ + 2, p.m_ + 2);
-//  cout << "Square sol: " << x_square << endl;
-//  cout << "Solution:" << x << "\n";
+//  int problem_sizes[] = {30, 62, 126, 254, 510};
+  int problem_sizes[] = {62}; // For debugging.
+  for (const int& problem_size : problem_sizes) {
+    // TODO(andreib): Solve both.
+    auto alpha = BuildFirstProblem(problem_size, problem_size);
+    auto beta = BuildSecondProblem(problem_size, problem_size);
 
-  // TODO: this should be a method!
-  // Compute errors and save the results from the master (0) node.
-  MASTER {
-    double max_err_threshold = 1e-12;
-    Spline2DSolution<double> solution(u, x_square, p);
-    auto cpoints = p.GetControlPoints();
-    double max_err = GetMaxError(cpoints, p, solution);
-    cout << "Maximum error over control points: " << max_err << "\n";
-    // Note that these are EXACTLY the points we wish to fit to, so the error should be zero.
-    if (max_err > max_err_threshold) {
-      throw runtime_error(Format("Found unusually large error in a control point. Maximum error over control points "
-                                 "was %.6f, larger than the threshold of %.6f.", max_err, max_err_threshold));
+    MASTER {
+      cout << "Starting 2D spline interpolation experiment." << endl;
+      cout << "Will be solving problem: " << beta.GetFullName() << endl;
     }
 
-    auto denser_grid = MeshGrid(
-        GetControlPoints1d(3 * p.n_ + 1, p.a_x_, p.b_x_),
-        GetControlPoints1d(3 * p.m_ + 1, p.a_y_, p.b_y_)
-    );
-    double max_err_dense = GetMaxError(denser_grid, p, solution);
-    cout << "Maximum error over denser grid: " << max_err_dense << "\n";
+    auto naive_solution = SolveNaive(beta);
+    // TODO(andreib): Probably want to do a switch over solver type here.
+    auto deboor_serial_solution = SolveSerialDeBoor(beta);
 
-    Save(solution, FLAGS_out_dir);
+    // TODO(andreib): Compare DeBoor result with serial result and assert!
+    Eigen::MatrixXd delta = naive_solution.coefs_ - deboor_serial_solution.coefs_;
+    delta.resize(beta.S.rows(), beta.S.cols());
+    cout << "Delta vector norm: " << delta.norm() << endl;
+
+
+    // TODO: this should be a method!
+    // Compute errors and save the results from the master (0) node.
+    MASTER {
+      double max_err_threshold = 1e-12;
+      Spline2DSolution<double> &solution = deboor_serial_solution;
+      auto cpoints = beta.GetControlPoints();
+      double max_err = GetMaxError(cpoints, beta, solution);
+      cout << "Maximum error over control points: " << max_err << "\n";
+      // Note that these are EXACTLY the points we wish to fit to, so the error should be zero.
+      if (max_err > max_err_threshold) {
+        throw runtime_error(Format("Found unusually large error in a control point. Maximum error over control points "
+                                   "was %.6f, larger than the threshold of %.6f.", max_err, max_err_threshold));
+      }
+
+      auto denser_grid = MeshGrid(
+          GetControlPoints1d(3 * beta.n_ + 1, beta.a_x_, beta.b_x_),
+          GetControlPoints1d(3 * beta.m_ + 1, beta.a_y_, beta.b_y_)
+      );
+      double max_err_dense = GetMaxError(denser_grid, beta, solution);
+      cout << "Maximum error over denser grid: " << max_err_dense << "\n";
+
+      Save(solution, FLAGS_out_dir);
+    }
   }
   return 0;
 }

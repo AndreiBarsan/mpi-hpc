@@ -7,12 +7,6 @@
 
 #include <cassert>
 #include <vector>
-
-#ifdef DEBUG_WITH_EIGEN
-#include "Eigen/Core"
-#endif
-
-
 #include "matrix.h"
 
 // Bad practice, but OK for small projects like this one.

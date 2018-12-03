@@ -20,7 +20,7 @@
 
 #include <Eigen/Core>
 
-#include <src/common/utils.h>
+#include "common/utils.h"
 
 using EMatrix = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>;
 using namespace std;
