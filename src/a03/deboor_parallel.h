@@ -6,6 +6,8 @@
 #ifndef HPSC_DEBOOR_PARALLEL_H
 #define HPSC_DEBOOR_PARALLEL_H
 
+#include <iostream>
+
 #include <Eigen/Core>
 #include <Eigen/Sparse>
 
@@ -59,7 +61,7 @@ Eigen::VectorXd DeBoorParallelA(const ESMatrix &A, const ESMatrix &B, const Eige
   // All-to-all transpose of the dense matrix D.
   MatrixXd local_D_transposed;
   cout << "Doing all to all!" << endl;
-  AllToAllEigenDense(local_D, local_D_transposed);
+//  AllToAllEigenDense(local_D, local_D_transposed);
 
   // Return zeros for debugging for now.
   MatrixXd C = MatrixXd::Zero(n, m);

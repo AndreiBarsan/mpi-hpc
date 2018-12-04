@@ -1,5 +1,6 @@
 #include "mpi_eigen_helpers.h"
 
+#include <iostream>
 #include <stdexcept>
 
 #include <mpi.h>

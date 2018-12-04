@@ -382,7 +382,7 @@ void CheckSolution(
     const Spline2DProblem &problem,
     const Spline2DSolution<double> &smart_solution
 ) {
-  auto naive_solution = SolveNaive(problem);
+  Spline2DSolution<double> naive_solution = SolveNaive(problem);
   Eigen::MatrixXd delta = naive_solution.coefs_ - smart_solution.coefs_;
   delta.resize(problem.S.rows(), problem.S.cols());
   double delta_norm = delta.norm();
