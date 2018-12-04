@@ -83,13 +83,9 @@ Eigen::VectorXd DeBoorParallelA(const ESMatrix &A, const ESMatrix &B, const Eige
       n * partition_cols,
       MPI_DOUBLE,
       MPI_COMM_WORLD);
-
-  MPI_Barrier(MPI_COMM_WORLD);
-  cout << "Allgather OK" << endl;
-
   for(int i = 0; i < n; ++i) {
     for(int j = 0; j < m; ++j) {
-      C_full(i, j) = recv_buffer[i*m+j];
+      C_full(j, i) = recv_buffer[i*m+j];
     }
   }
 

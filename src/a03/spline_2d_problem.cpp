@@ -400,25 +400,25 @@ int Spline2DExperiment() {
   SolverType solver_type = GetSolverType(solver_name);
 
   // TODO pass problem sizes as command line arg.
-//  int problem_sizes[] = {30, 62, 126, 254, 510};
-  int problem_sizes[] = {30}; // For debugging (126+ problems are VERY slow with generic sparse LU).
+  int problem_sizes[] = {30, 62, 126, 254, 510};
+//  int problem_sizes[] = {30}; // For debugging (126+ problems are VERY slow with generic sparse LU).
   for (const int& size : problem_sizes) {
-//    for (const auto& problem : {BuildFirstProblem(size, size), BuildSecondProblem(size, size)}) {
-    for (const auto& problem : {BuildSecondProblem(size, size)}) {
+    for (const auto& problem : {BuildFirstProblem(size, size), BuildSecondProblem(size, size)}) {
+//    for (const auto& problem : {BuildSecondProblem(size, size)}) {
       MASTER {
         cout << "Starting 2D spline interpolation experiment." << endl;
         cout << "Will be solving problem: " << problem.GetFullName() << endl;
       }
       auto smart_solution = Solve(problem, solver_type);
       MASTER {
+        Save(smart_solution, FLAGS_out_dir);
+        cout << "Solution saved as JSON (but not checked yet).\n";
         cout << "Computing solution using slow method and checking results..." << endl;
         CheckSolution(solver_name, problem, smart_solution);
         cout << "Solver: " << solver_name << " coefficient check vs. reference solution OK. Checking max error.\n";
         auto errors = smart_solution.ComputeErrors();
         cout << "Maximum error over control points: " << errors.max_over_control_points << "\n";
         cout << "Maximum error over denser grid: " << errors.max_over_dense_points << "\n";
-        Save(smart_solution, FLAGS_out_dir);
-        cout << "Solution saved as JSON.\n";
       }
     }
   }
