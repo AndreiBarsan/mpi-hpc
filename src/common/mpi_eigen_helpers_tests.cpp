@@ -15,8 +15,17 @@
 
 using namespace std;
 
+EMatrix GetSampleMatrixDense(int rows, int cols) {
+  EMatrix mat = EMatrix::Zero(rows, cols);
+  for(int i = 0; i < rows; ++i) {
+    for(int j = 0; j < cols; ++j) {
+      mat(i, j) = i + j;
+    }
+  }
+  return mat;
+}
 
-ESMatrix get_sample_matrix(int rows, int cols) {
+ESMatrix GetSampleMatrixSparse(int rows, int cols) {
   ESMatrix mat;
   mat.resize(rows, cols);
   mat.insert(0, 0) = 19;
@@ -37,7 +46,7 @@ void test_bcast_sparse_fixture(int rows, int cols, int sender) {
 
   ESMatrix mat;
   if (local_id == sender) {
-    mat = get_sample_matrix(rows, cols);
+    mat = GetSampleMatrixSparse(rows, cols);
     cout << "Doing test matrix broadcast [" << rows << " x " << cols << "] to all our " << n_procs
          << " processors. Sender: " << sender << "\n";
   }
@@ -45,7 +54,7 @@ void test_bcast_sparse_fixture(int rows, int cols, int sender) {
   mat.makeCompressed();
 
   BroadcastEigenSparse(mat, sender);
-  ESMatrix expected = get_sample_matrix(rows, cols);
+  ESMatrix expected = GetSampleMatrixSparse(rows, cols);
   ESMatrix &actual = mat;
   assert(expected.isApprox(actual));
 }
@@ -75,20 +84,43 @@ void test_bcast_sparse_nonsquare() {
       }
     }
   }
+}
 
+void test_distributed_transpose_fixture(int size) {
+  MPI_SETUP;
+  EMatrix original = GetSampleMatrixDense(size, size);
+  EMatrix temp;
+
+  int q = size / n_procs;
+  EMatrix local_chunk(q, size);
+  int start = local_id * q;
+  for(int i = start; i < start + q; ++i) {
+    local_chunk.row(i - start) = original.row(i);
+  }
+  AllToAllEigenDense(local_chunk, temp);
+  // TODO(andreib): Assert that transposing twice == original.
+}
+
+void test_distributed_transpose() {
+  int sizes[] = {16}; //, 16, 32};
+  for(int size : sizes) {
+    test_distributed_transpose_fixture(size);
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
 }
 
 int main(int argc, char **argv) {
   MPI_Init(&argc, &argv);
   MPI_SETUP;
-  test_bcast_sparse_square();
-  MASTER {
-    cout << "Square matrix tests OK." << endl;
-  }
-  test_bcast_sparse_nonsquare();
-  MASTER {
-    cout << "Non-square matrix tests OK." << endl;
-  }
+//  test_bcast_sparse_square();
+//  MASTER {
+//    cout << "Square matrix tests OK." << endl;
+//  }
+//  test_bcast_sparse_nonsquare();
+//  MASTER {
+//    cout << "Non-square matrix tests OK." << endl;
+//  }
+  test_distributed_transpose();
   MPI_Finalize();
   return 0;
 }

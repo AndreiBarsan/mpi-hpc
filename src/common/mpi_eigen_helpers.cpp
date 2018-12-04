@@ -55,36 +55,40 @@ void AllToAllEigenDense(const EMatrix &in_chunk, EMatrix &out) {
 
   int idx = 0;
   int tile_size = in_chunk.rows();
+  cout << in_chunk.rows() << ", " << in_chunk.cols() << ", " << n_procs << endl;
   assert(in_chunk.rows() * n_procs == in_chunk.cols());
   int n_els = tile_size * tile_size * n_procs;
-  auto send_buffer = new double[n_els];
-  auto recv_buffer = new double[n_els];
 
+  // TODO(andreib): We're doing all-to-all, not allgather; why do we need this extra memory?
+  auto send_buffer = make_unique<double[]>(n_els * n_procs);
+  auto recv_buffer = make_unique<double[]>(n_els * n_procs);
+//  memset(recv_buffer, 0, n_els * n_procs * sizeof(double)); // TODO get rid of this?
   for(int k = 0; k < n_procs; ++k) {
     for(int i = 0; i < tile_size; ++i) {
       for(int j = 0; j < tile_size; ++j) {
-        send_buffer[idx++] = in_chunk(i, k * tile_size + j);
+        // Flipped j and i since we are transposing each chunk.
+        send_buffer[idx++] = in_chunk(j, k * tile_size + i);
       }
     }
   }
-  cout << idx << ", " << n_els << endl;
+//  cout << in_chunk << endl;
   MPI_Alltoall(
-      send_buffer,
-      n_els,
+      send_buffer.get(),
+      tile_size * tile_size,
       MPI_DOUBLE,
-      recv_buffer,
-      n_els,
+      recv_buffer.get(),
+      tile_size * tile_size,
       MPI_DOUBLE,
       MPI_COMM_WORLD);
-  cout << local_id << ": All to all successful!" << endl;
+//  cout << "All to all successful!" << endl;
 
-//  int local_offset = local_id * in_chunk.rows() * in_chunk.cols();
-//  out.resize(in_chunk.rows() * n_procs, in_chunk.cols());
-//  int local_start = local_id * in_chunk.rows();
-//  for(int i = local_start; i < (local_id + 1) * in_chunk.cols(); ++i) {
-//    out.row(i) = in_chunk(i - local_start);
-//  }
-
-  delete[] send_buffer;
-  delete[] recv_buffer;
+  idx = 0;
+  out.resize(in_chunk.rows(), in_chunk.cols());
+  for(int k = 0; k < n_procs; ++k) {
+    for(int i = 0; i < tile_size; ++i) {
+      for(int j = 0; j < tile_size; ++j) {
+        out(i, k * tile_size + j) = recv_buffer[idx++];
+      }
+    }
+  }
 }

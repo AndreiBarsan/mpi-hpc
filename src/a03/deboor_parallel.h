@@ -56,21 +56,46 @@ Eigen::VectorXd DeBoorParallelA(const ESMatrix &A, const ESMatrix &B, const Eige
     VectorXd g_i = G.block(i, 0, 1, m).transpose();
     local_D.row(i - local_start) = B_solver.solve(g_i).transpose();
   }
-  cout << "Done first serial solver loop." << endl;
+  cout << "Done first parallel solver loop." << endl;
 
   // All-to-all transpose of the dense matrix D.
   MatrixXd local_D_transposed;
   cout << "Doing all to all!" << endl;
-//  AllToAllEigenDense(local_D, local_D_transposed);
+  AllToAllEigenDense(local_D, local_D_transposed);
 
   // Return zeros for debugging for now.
-  MatrixXd C = MatrixXd::Zero(n, m);
-//  for (int j = 0; j < m; ++j) {
-//    VectorXd d_prime_i = D.col(j);
-//    C.col(j) = A_solver.solve(d_prime_i);
-//  }
-  C.resize(n * m, 1);
-  return C;
+  MatrixXd C = MatrixXd::Zero(n, partition_cols);
+  local_start = local_id * partition_cols;
+  local_end = (local_id + 1) * partition_cols;
+  for(int i = local_start; i < local_end; ++i) {
+    VectorXd d_prime_i = local_D_transposed.row(i - local_start);
+    C.col(i - local_start) = A_solver.solve(d_prime_i);
+  }
+  cout << "Done second parallel solver loop." << endl;
+
+  MatrixXd C_full = MatrixXd::Zero(n, m);
+  double *recv_buffer = new double[n * m];   // TODO do it in place!
+  MPI_Allgather(
+      C.data(),
+      n * partition_cols,
+      MPI_DOUBLE,
+      recv_buffer,
+      n * partition_cols,
+      MPI_DOUBLE,
+      MPI_COMM_WORLD);
+
+  MPI_Barrier(MPI_COMM_WORLD);
+  cout << "Allgather OK" << endl;
+
+  for(int i = 0; i < n; ++i) {
+    for(int j = 0; j < m; ++j) {
+      C_full(i, j) = recv_buffer[i*m+j];
+    }
+  }
+
+  delete[] recv_buffer;
+  C_full.resize(n * m, 1);
+  return C_full;
 }
 
 

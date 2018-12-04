@@ -401,18 +401,17 @@ int Spline2DExperiment() {
 
   // TODO pass problem sizes as command line arg.
 //  int problem_sizes[] = {30, 62, 126, 254, 510};
-  int problem_sizes[] = {6}; // For debugging (126+ problems are VERY slow with generic sparse LU).
+  int problem_sizes[] = {30}; // For debugging (126+ problems are VERY slow with generic sparse LU).
   for (const int& size : problem_sizes) {
 //    for (const auto& problem : {BuildFirstProblem(size, size), BuildSecondProblem(size, size)}) {
-    for (const auto& problem : {BuildFirstProblem(size, size)}) {
+    for (const auto& problem : {BuildSecondProblem(size, size)}) {
       MASTER {
         cout << "Starting 2D spline interpolation experiment." << endl;
         cout << "Will be solving problem: " << problem.GetFullName() << endl;
-        cout << "First computing naive solution..." << endl;
       }
       auto smart_solution = Solve(problem, solver_type);
-      // Compute errors and save the results from the master (0) node.
       MASTER {
+        cout << "Computing solution using slow method and checking results..." << endl;
         CheckSolution(solver_name, problem, smart_solution);
         cout << "Solver: " << solver_name << " coefficient check vs. reference solution OK. Checking max error.\n";
         auto errors = smart_solution.ComputeErrors();

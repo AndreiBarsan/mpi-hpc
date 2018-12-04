@@ -61,3 +61,12 @@ The `results` directory will contain experiment results.
 
 The `config` directory contains configuration files such as (potentially dynamically generated) lists of machines to 
 run the MPI code on.
+
+
+## A Few MPI Hints and Tips
+
+ * Make keeping track of which node is outputting what by passing the
+ `--tag-output` flag to `mpirun`, thereby ensuring that every output
+ line is prefixed with the ID of the node. `--timestamp-output` is
+ self-explanatory and a nice addition, especially if you're not already
+ using a dedicated logging library like `glog`.
