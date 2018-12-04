@@ -213,21 +213,27 @@ class Spline2DSolution {
     return val;
   }
 
-  Spline2DErrors<T> ComputeErrors() const {
-    double kMaxControlPointError = 1e-12;
+  Spline2DErrors<T> ComputeErrorsAndValidate() const {
+    double kMaxControlPointError = 1e-8;
     const Spline2DProblem &problem = this->problem_;
     auto cpoints = problem.GetControlPoints();
     double max_err = GetMaxError(cpoints, problem, *this);
     // Note that these are EXACTLY the points we wish to fit to, so the error should be zero.
     if (max_err > kMaxControlPointError) {
       throw runtime_error(Format("Found unusually large error in a control point. Maximum error over control points "
-                                 "was %.6f, larger than the threshold of %.6f.", max_err, kMaxControlPointError));
+                                 "was %.10f, larger than the threshold of %.10f.", max_err, kMaxControlPointError));
     }
+    // XXX TODO(andreib): This grid must be a FIXED size ALWAYS. Check handout!
     auto denser_grid = MeshGrid(
         GetControlPoints1d(3 * problem.n_ + 1, problem.a_x_, problem.b_x_),
         GetControlPoints1d(3 * problem.m_ + 1, problem.a_y_, problem.b_y_)
     );
     double max_err_dense = GetMaxError(denser_grid, problem, *this);
+    if (max_err_dense - max_err < -kMaxControlPointError) {
+      throw runtime_error(Format("The max error on the dense grid should NOT be smaller than the max error on the "
+                                 "control points, but got dense max error %.10f < control point max error %.10f!",
+                                 max_err_dense, max_err));
+    }
     return Spline2DErrors<T>(max_err, max_err_dense);
   }
 
@@ -400,7 +406,8 @@ int Spline2DExperiment() {
   SolverType solver_type = GetSolverType(solver_name);
 
   // TODO pass problem sizes as command line arg.
-  int problem_sizes[] = {30, 62, 126, 254, 510};
+//  int problem_sizes[] = {30, 62, 126, 254, 510};
+  int problem_sizes[] = {30, 62, 126}; //, 254, 510};
 //  int problem_sizes[] = {30}; // For debugging (126+ problems are VERY slow with generic sparse LU).
   for (const int& size : problem_sizes) {
     for (const auto& problem : {BuildFirstProblem(size, size), BuildSecondProblem(size, size)}) {
@@ -413,10 +420,15 @@ int Spline2DExperiment() {
       MASTER {
         Save(smart_solution, FLAGS_out_dir);
         cout << "Solution saved as JSON (but not checked yet).\n";
-        cout << "Computing solution using slow method and checking results..." << endl;
-        CheckSolution(solver_name, problem, smart_solution);
-        cout << "Solver: " << solver_name << " coefficient check vs. reference solution OK. Checking max error.\n";
-        auto errors = smart_solution.ComputeErrors();
+        if (size < 200) {
+          cout << "Computing solution using slow method and checking results...\n";
+          CheckSolution(solver_name, problem, smart_solution);
+          cout << "Solver: " << solver_name << " coefficient check vs. reference solution OK. Checking max error.\n";
+        }
+        else {
+          cout << "Problem too large to check coefficients directly. Using only control point error check.\n";
+        }
+        auto errors = smart_solution.ComputeErrorsAndValidate();
         cout << "Maximum error over control points: " << errors.max_over_control_points << "\n";
         cout << "Maximum error over denser grid: " << errors.max_over_dense_points << "\n";
       }

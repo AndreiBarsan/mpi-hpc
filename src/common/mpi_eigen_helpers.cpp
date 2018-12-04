@@ -11,6 +11,9 @@
 // TODO-LOW(andreib): Use single send with *void data / structs in MPI.
 // TODO-LOW(andreib): Perform an asynchronous broadcast.
 
+using namespace Eigen;
+using namespace std;
+
 void BroadcastEigenSparse(ESMatrix &A, int sender) {
   MPI_SETUP;
   if (! A.isCompressed()) {
@@ -47,48 +50,29 @@ void BroadcastEigenSparse(ESMatrix &A, int sender) {
   }
 }
 
-void AllToAllEigenDense(const EMatrix &in_chunk, EMatrix &out) {
+void TransposeEigenDense(const EMatrix &in_chunk, EMatrix &out) {
   MPI_SETUP;
-  using namespace Eigen;
-  using namespace std;
-  cout << local_id << ": All to all, in chunk size" << in_chunk.rows() << " x " << in_chunk.cols() << "\n";
-
   int idx = 0;
-  int tile_size = in_chunk.rows();
-  cout << in_chunk.rows() << ", " << in_chunk.cols() << ", " << n_procs << endl;
   assert(in_chunk.rows() * n_procs == in_chunk.cols());
-  int n_els = tile_size * tile_size * n_procs;
+  long tile_rows = in_chunk.rows();
+  long tile_cols = in_chunk.rows();  // We just asserted that the tiles must be square.
+  size_t tile_size = tile_rows * tile_cols;
+  auto send_buffer = make_unique<double[]>(tile_size * n_procs);
+  auto recv_buffer = make_unique<double[]>(tile_size * n_procs);
 
-  // TODO(andreib): We're doing all-to-all, not allgather; why do we need this extra memory?
-  auto send_buffer = make_unique<double[]>(n_els * n_procs);
-  auto recv_buffer = make_unique<double[]>(n_els * n_procs);
-//  memset(recv_buffer, 0, n_els * n_procs * sizeof(double)); // TODO get rid of this?
   for(int k = 0; k < n_procs; ++k) {
-    for(int i = 0; i < tile_size; ++i) {
-      for(int j = 0; j < tile_size; ++j) {
-        // Flipped j and i since we are transposing each chunk.
-        send_buffer[idx++] = in_chunk(j, k * tile_size + i);
+    for(int i = 0; i < tile_rows; ++i) {
+      for(int j = 0; j < tile_cols; ++j) {
+        // We read the data in row-major order, but Eigen stores matrices in column-major (Fortran) order.
+        // Thus, when Alltoall does its thing, it writes the row-major data into a column-major Eigen buffer, therefore
+        // doing the intra-tile transpose for us!
+        send_buffer[idx++] = in_chunk(i, k * tile_cols + j);
       }
     }
   }
-//  cout << in_chunk << endl;
-  MPI_Alltoall(
-      send_buffer.get(),
-      tile_size * tile_size,
-      MPI_DOUBLE,
-      recv_buffer.get(),
-      tile_size * tile_size,
-      MPI_DOUBLE,
-      MPI_COMM_WORLD);
-//  cout << "All to all successful!" << endl;
-
-  idx = 0;
   out.resize(in_chunk.rows(), in_chunk.cols());
-  for(int k = 0; k < n_procs; ++k) {
-    for(int i = 0; i < tile_size; ++i) {
-      for(int j = 0; j < tile_size; ++j) {
-        out(i, k * tile_size + j) = recv_buffer[idx++];
-      }
-    }
-  }
+
+  // Redistribute the chunks such that processor #1 gets the 1st chunk in each processor, processor #2 gets the 2nd
+  // chunk in each processor, etc., thereby effectively performing a block-wise transpose.
+  MPI_Alltoall(send_buffer.get(), tile_size, MPI_DOUBLE, out.data(), tile_size, MPI_DOUBLE, MPI_COMM_WORLD);
 }

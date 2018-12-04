@@ -10,8 +10,6 @@
 #include "common/eigen_helpers.h"
 #include "common/mpi_helpers.h"
 
-// TODO: method to bcast dense matrix too!
-
 /**
  * @brief Broadcasts the given sparse Eigen matrix using MPI, starting from the given node.
  * @param A         The sparse matrix to broadcast.
@@ -19,14 +17,13 @@
  */
 void BroadcastEigenSparse(ESMatrix &A, int sender = 0);
 
-
 /**
- * TODO(andreib): Document this properly once you finish coding.
- *  @brief Assembles [n_procs] input chunks of size [a x m] into a matrix of [m x a] in each processor.
- *  @param[in] in_chunk     [a x m] matrix owned locally by a processor.
- *  @param[out] out
+ *  @brief Transposes a square row-wise distributed matrix using MPI.
+ *  @details Each of the p nodes holds a [n/p x m] chunk of a matrix.
+ *  @param[in] in_chunk     [n/p x m] matrix owned locally by a processor.
+ *  @param[out] out         [m/p x n] matrix corresponding to the transposed result.
  */
-void AllToAllEigenDense(const EMatrix &in_chunk, EMatrix &out);
+void TransposeEigenDense(const EMatrix &in_chunk, EMatrix &out);
 
 
 #endif //HPSC_MPI_EIGEN_HELPERS_H

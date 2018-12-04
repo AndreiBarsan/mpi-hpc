@@ -97,8 +97,9 @@ void test_distributed_transpose_fixture(int size) {
   for(int i = start; i < start + q; ++i) {
     local_chunk.row(i - start) = original.row(i);
   }
-  AllToAllEigenDense(local_chunk, temp);
-  // TODO(andreib): Assert that transposing twice == original.
+  TransposeEigenDense(local_chunk, temp);
+
+  // TODO(andreib): Assert that transposing twice == original. Otherwise this test is incomplete!
 }
 
 void test_distributed_transpose() {
