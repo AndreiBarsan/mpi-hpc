@@ -18,6 +18,7 @@
 #include "common/serial_numerical.h"
 #include "common/utils.h"
 #include "a03/deboor_serial.h"
+#include "a03/deboor_parallel.h"
 
 // X <---> N points.
 // Y <---> M points.
@@ -41,7 +42,9 @@ DEFINE_string(method, "eigen", "Name of the method used to solve the spline prob
 //                in your solution class.
 
 // Feedback from second assignment's coding part:
-//   TODO(andreib): Write down feedback once you get it.
+//  - not much, but just make sure to account for sparsity in regular operations when computing theoretical
+// complexities; one major mistake was you accounted for sparse/triangular matrices when doing e.g.,
+// LU/fwd/back-subst, but NOT when doing matrix-matrix and matrix-vector multiplication, which you should have!
 
 // TODO(andreib): Use MPI_Alltoall for the transposition of the matrix of intermediate results.
 // TODO(andreib): Group messages together as much as possible.
@@ -56,6 +59,13 @@ using namespace std;
 /// Represents a 2D scalar-valued function which we use in our 2D interpolation problems.
 using Scalar2DFunction = function<double(double, double)>;
 
+/**
+ * @brief Returns the control points for the array [a, b], i.e., the mid-points of all n segments plus a and b.
+ * @param n The number of intervals to partition [a, b] in.
+ * @param a Start of the interval.
+ * @param b End of the interval (inclusive).
+ * @return An array of (n + 2) knots.
+ */
 Eigen::ArrayXd GetControlPoints1d(uint32_t n, double a, double b) {
   using namespace Eigen;
   auto knots = ArrayXd::LinSpaced(n + 1, a, b);
@@ -341,7 +351,7 @@ Spline2DSolution<double> SolveNaive(const Spline2DProblem &problem) {
 }
 
 Spline2DSolution<double> SolveSerialDeBoor(const Spline2DProblem &problem) {
-  Eigen::MatrixXd deboor_x = DeBoorDecomposition(problem.S, problem.T, problem.Getu(), DeBoorMethod::kLinSolveBothDimensions);
+  Eigen::MatrixXd deboor_x = DeBoorDecomposition(problem.S, problem.T, problem.Getu());
   deboor_x.resize(problem.n_ + 2, problem.m_ + 2);
   return Spline2DSolution<double>(problem.Getu(), deboor_x, problem);
 }
@@ -352,8 +362,11 @@ Spline2DSolution<double> Solve(const Spline2DProblem &problem, SolverType solver
       return SolveNaive(problem);
     case kSerialDeBoor:
       return SolveSerialDeBoor(problem);
-    case kParallelDeBoorA:
-//      return SolveParallelDeBoor(problem);
+    case kParallelDeBoorA: {
+      Eigen::MatrixXd sol = DeBoorParallelA(problem.S, problem.T, problem.Getu());
+      sol.resize(problem.n_ + 2, problem.m_ + 2);
+      return Spline2DSolution<double>(problem.Getu(), sol, problem);
+    }
     case kParallelDeBoorB:
         throw runtime_error("Not supported yet.");
     default:
@@ -361,43 +374,46 @@ Spline2DSolution<double> Solve(const Spline2DProblem &problem, SolverType solver
   }
 }
 
+/**
+ * @brief Solves the given problem with a reference (but slow) solver and checks the solution match.
+ */
+void CheckSolution(
+    const std::string &solver_name,
+    const Spline2DProblem &problem,
+    const Spline2DSolution<double> &smart_solution
+) {
+  auto naive_solution = SolveNaive(problem);
+  Eigen::MatrixXd delta = naive_solution.coefs_ - smart_solution.coefs_;
+  delta.resize(problem.S.rows(), problem.S.cols());
+  double delta_norm = delta.norm();
+  const double kDeltaNormEps = 1e-8;
+  if (delta_norm > kDeltaNormEps) {
+    throw runtime_error(Format("Computed solution coefficients from method [%s] differs from the reference naive "
+                               "solution by [%.10lf], more than the threshold epsilon of [%.10lf].",
+                               solver_name.c_str(), delta_norm, kDeltaNormEps));
+  }
+}
+
 int Spline2DExperiment() {
   MPI_SETUP;
   string solver_name = FLAGS_method;
   SolverType solver_type = GetSolverType(solver_name);
-  if (solver_type == SolverType::kParallelDeBoorA || solver_type == SolverType::kParallelDeBoorB) {
-    throw runtime_error("Parallel DeBoor solvers not implemented yet!");
-  }
 
+  // TODO pass problem sizes as command line arg.
 //  int problem_sizes[] = {30, 62, 126, 254, 510};
-  int problem_sizes[] = {62}; // For debugging (126+ problems are VERY slow with generic sparse LU).
-  for (const int& problem_size : problem_sizes) {
-    for (const auto& pp : {BuildFirstProblem(problem_size, problem_size),
-                                BuildSecondProblem(problem_size, problem_size)}) {
-
-      auto beta = BuildSecondProblem(problem_size, problem_size);
+  int problem_sizes[] = {6}; // For debugging (126+ problems are VERY slow with generic sparse LU).
+  for (const int& size : problem_sizes) {
+//    for (const auto& problem : {BuildFirstProblem(size, size), BuildSecondProblem(size, size)}) {
+    for (const auto& problem : {BuildFirstProblem(size, size)}) {
       MASTER {
         cout << "Starting 2D spline interpolation experiment." << endl;
-        cout << "Will be solving problem: " << beta.GetFullName() << endl;
+        cout << "Will be solving problem: " << problem.GetFullName() << endl;
         cout << "First computing naive solution..." << endl;
       }
-
-      auto naive_solution = SolveNaive(beta);
-      MASTER { cout << "Naive sparse solution computed." << endl; }
-      auto smart_solution = Solve(beta, solver_type);
-
-      Eigen::MatrixXd delta = naive_solution.coefs_ - smart_solution.coefs_;
-      delta.resize(beta.S.rows(), beta.S.cols());
-      double delta_norm = delta.norm();
-      const double kDeltaNormEps = 1e-8;
-      if (delta_norm > kDeltaNormEps) {
-        throw runtime_error(Format("Computed solution coefficients from method [%s] differs from the reference naive "
-                                   "solution by [%.10lf], more than the threshold epsilon of [%.10lf].",
-                                   solver_name.c_str(), delta_norm, kDeltaNormEps));
-      }
-
+      auto smart_solution = Solve(problem, solver_type);
       // Compute errors and save the results from the master (0) node.
       MASTER {
+        CheckSolution(solver_name, problem, smart_solution);
         cout << "Solver: " << solver_name << " coefficient check vs. reference solution OK. Checking max error.\n";
         auto errors = smart_solution.ComputeErrors();
         cout << "Maximum error over control points: " << errors.max_over_control_points << "\n";

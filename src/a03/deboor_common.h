@@ -15,27 +15,15 @@ enum SolverType {
       kParallelDeBoorB
 };
 
-SolverType GetSolverType(const string &input) {
-  if (input == "eigen") {
-    return SolverType::kNaiveSparseLU;
-  }
-  else if (input == "serial-deboor") {
-    return SolverType::kSerialDeBoor;
-  }
-  else if (input == "parallel-deboor-a") {
-    return SolverType::kParallelDeBoorA;
-  }
-  else if (input == "parallel-deboor-b") {
-    return SolverType::kParallelDeBoorB;
-  }
-}
+SolverType GetSolverType(const std::string &input);
 
-enum DeBoorMethod {
-  /// This represents "Alternative 1" from the slides.
-      kLinSolveBothDimensions = 0,
-  /// This represents "Alternative 2" from the slides.
-      kLinSolveOneDimension
-};
+// TODO(andreib): Do we still need this separate enum?
+//enum DeBoorMethod {
+//  /// This represents "Alternative 1" from the slides.
+//      kLinSolveBothDimensions = 0,
+//  /// This represents "Alternative 2" from the slides.
+//      kLinSolveOneDimension
+//};
 
 
 #endif //HPSC_DEBOOR_COMMON_H

@@ -1,3 +1,7 @@
+/**
+ *  @file deboor_serial.h
+ *  @brief Logic for solving linear systems of the form $(A \otimes B) x = g$ for $x$.
+ */
 
 #ifndef HPSC_DEBOOR_H
 #define HPSC_DEBOOR_H
@@ -12,25 +16,17 @@
 /// \param A First component of the Kronecker product, [n x n].
 /// \param B Second component of the Kronecker product, [m x m].
 /// \param u Right-had side column vector, [nm x 1].
-/// \param method TODO(andreib): Remove this in serial context.
 /// \return The [nm x 1] solution vector.
 Eigen::VectorXd DeBoorDecomposition(const ESMatrix &A,
                                     const ESMatrix &B,
-                                    const Eigen::VectorXd &u,
-                                    const DeBoorMethod &method) {
+                                    const Eigen::VectorXd &u) {
   using namespace Eigen;
   using namespace std;
   MPI_SETUP;
-  MPI_Barrier(MPI_COMM_WORLD);
-
-//  auto send_buffer = make_unique<double[]>(u.rows() * 2);
-//  auto recv_buffer = make_unique<double[]>(u.rows() * 2);
-//  int sz = 8;
-
-  int n = A.rows();
-  int m = B.rows();
   assert(A.rows() == A.cols());
   assert(B.rows() == B.cols());
+  int n = A.rows();
+  int m = B.rows();
 
   SparseLU<SparseMatrix<double>> A_solver;
   A_solver.compute(A);
@@ -42,10 +38,8 @@ Eigen::VectorXd DeBoorDecomposition(const ESMatrix &A,
 
   // TODO better name for this n x m matrix which is the resized RHS.
   MatrixXd G(u);
-  cout << "Will resize matrix: " << n << " x " << m << endl;
+  cout << "Will reshape g as a matrix: " << n << " x " << m << endl;
   G.resize(n, m);
-  cout << "Resize OK" << endl;
-//  cout << G << endl;
 
   // This loop can be performed in parallel.
   MatrixXd D = MatrixXd::Zero(n, m);
@@ -70,8 +64,6 @@ Eigen::VectorXd DeBoorDecomposition(const ESMatrix &A,
     VectorXd d_prime_i = D.col(j);
     C.col(j) = A_solver.solve(d_prime_i);
   }
-  cout << "Done doing DeBoor decomposition." << endl;
-
   C.resize(n * m, 1);
   return C;
 }

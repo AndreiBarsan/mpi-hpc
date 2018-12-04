@@ -44,6 +44,46 @@ void BroadcastEigenSparse(ESMatrix &A, int sender) {
   if (local_id != sender) {
     A.outerIndexPtr()[n_cols] = total_element_count;
   }
+}
 
-//  cout << local_id << " method end OK." << endl;
+void AllToAllEigenDense(const EMatrix &in_chunk, EMatrix &out) {
+  MPI_SETUP;
+  using namespace Eigen;
+  using namespace std;
+  cout << local_id << ": All to all, in chunk size" << in_chunk.rows() << " x " << in_chunk.cols() << "\n";
+
+  int idx = 0;
+  int tile_size = in_chunk.rows();
+  assert(in_chunk.rows() * n_procs == in_chunk.cols());
+  int n_els = tile_size * tile_size * n_procs;
+  auto send_buffer = new double[n_els];
+  auto recv_buffer = new double[n_els];
+
+  for(int k = 0; k < n_procs; ++k) {
+    for(int i = 0; i < tile_size; ++i) {
+      for(int j = 0; j < tile_size; ++j) {
+        send_buffer[idx++] = in_chunk(i, k * tile_size + j);
+      }
+    }
+  }
+  cout << idx << ", " << n_els << endl;
+  MPI_Alltoall(
+      send_buffer,
+      n_els,
+      MPI_DOUBLE,
+      recv_buffer,
+      n_els,
+      MPI_DOUBLE,
+      MPI_COMM_WORLD);
+  cout << local_id << ": All to all successful!" << endl;
+
+//  int local_offset = local_id * in_chunk.rows() * in_chunk.cols();
+//  out.resize(in_chunk.rows() * n_procs, in_chunk.cols());
+//  int local_start = local_id * in_chunk.rows();
+//  for(int i = local_start; i < (local_id + 1) * in_chunk.cols(); ++i) {
+//    out.row(i) = in_chunk(i - local_start);
+//  }
+
+  delete[] send_buffer;
+  delete[] recv_buffer;
 }

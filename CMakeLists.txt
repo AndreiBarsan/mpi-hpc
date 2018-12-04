@@ -35,7 +35,7 @@ add_executable(ring src/a01/ring.cpp ${COMMON_SOURCES})
 # Assignment 2
 add_executable(spline_problem ${COMMON_SOURCES} src/a02/spline_problem.cpp)
 # Assignment 3
-add_executable(spline_2d_problem ${COMMON_SOURCES} src/a03/spline_2d_problem.cpp)
+add_executable(spline_2d_problem ${COMMON_SOURCES} src/a03/spline_2d_problem.cpp src/a03/deboor_common.cpp)
 add_executable(mpi_eigen_helpers_tests ${COMMON_SOURCES} src/common/mpi_eigen_helpers_tests.cpp)
 
 # This fixes some strange CMake errors caused by unusual spaces in these variables.
