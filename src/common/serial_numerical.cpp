@@ -2,6 +2,7 @@
 
 void BandedLUFactorization(BandMatrix<double> &A, bool check_lu) {
   // For debugging
+  // XXX: remove this before benchmarking!
   Matrix<double> A_orig = A.get_dense();
   uint32_t n = A.get_n();
 
@@ -94,6 +95,7 @@ uint32_t Diff(uint32_t a, uint32_t b) {
 Matrix<double> SolveDecomposed(const BandMatrix<double> &A_decomposed, Matrix<double> &B) {
   uint32_t n_systems = B.cols_;
   unsigned int n = A_decomposed.get_n();
+  cout << "Solving " << n_systems << " systems at the same time." << endl;
 
   // Perform forward substitution to find intermediate result z.
   Matrix<double> z(B);
@@ -114,7 +116,7 @@ Matrix<double> SolveDecomposed(const BandMatrix<double> &A_decomposed, Matrix<do
   // Perform back substitution
   // We store our output here and the rhs is z.
   Matrix<double> x(B);
-  int bwi = bw; // hack
+  int bwi = bw; // XXX hack
   for (int j = n - 1; j >= 0; --j) {
     for(uint32_t k = 0; k < n_systems; ++k) {
       // the upper matrix has non-ones on diag, so we DO need to divide!

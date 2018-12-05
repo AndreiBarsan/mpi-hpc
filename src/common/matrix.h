@@ -82,7 +82,8 @@ class Matrix {
       return write_raw_rows(0, rows_, out, offset);
     }
 
-    /// Sets the values of this matrix from the given buffer. Useful for reading data received via MPI.
+    /// Sets the values of this matrix from the given buffer, in row-major order.
+    /// Useful for reading data received via MPI.
     uint32_t set_from(unique_ptr<T[]> &p, uint32_t offset = 0) {
       return set_from(p.get(), offset);
     }
@@ -96,6 +97,17 @@ class Matrix {
         }
       }
       return cur_offset;
+    }
+
+    /// Euclidean norm for vectors, Frobenius for matrices.
+    double norm() const {
+      double sum_sq = 0.0;
+      for(uint32_t i = 0; i < rows_; ++i) {
+        for(uint32_t j = 0; j < cols_; ++j) {
+          sum_sq += (*this)(i, j) * (*this)(i, j);
+        }
+      }
+      return sqrt(sum_sq);
     }
 
  public:

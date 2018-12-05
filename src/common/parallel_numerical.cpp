@@ -6,6 +6,8 @@
 
 // Known to be ALWAYS zero: B_i2, C_i2.
 // TODO-LOW(andreib): Implement low-tri/up-tri matrix class to improve efficiency of certain multiplications even more.
+// TODO(andreib): You are always doing write/send/recv/read. Extract that into an utility!
+// TODO(andreib): Initialize matrix class with zeros by default; avoid silly bugs this way!
 
 Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
   MPI_SETUP;
@@ -19,10 +21,11 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
                                " %uld (%uld equations, %d processors)", q, n, n_procs));
   }
   assert(q * n_procs == n);                     // Validate the assumption that n_procs perfectly divides n.
+  uint32_t n_systems = b.cols_;
 
   // Note: the make_unique<T[]> support is a C++14 thing.
-  auto send_buffer = make_unique<double[]>(A.get_n() * A.get_bandwidth() * 2);
-  auto recv_buffer = make_unique<double[]>(A.get_n() * A.get_bandwidth() * 2);
+  auto send_buffer = make_unique<double[]>(A.get_n() * A.get_bandwidth() * n_systems * 2);    // TODO(andreib): Do we need * 2?
+  auto recv_buffer = make_unique<double[]>(A.get_n() * A.get_bandwidth() * n_systems * 2);
 
   MASTER {
     // Node 0 is considered the master node. We assume it is the only node which originally has the full A and b,
@@ -33,10 +36,11 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
     for(int i = 0; i < n_procs; ++i) {
       // Send all the data necessary for one processor in a single transfer to reduce overhead as much as possible.
       uint32_t count = A.write_raw_rows(i * q, (i + 1) * q, send_buffer.get(), 0);
+      cout << "Got count = " << count << " ?==? " << q * 3 << endl;
       assert (count == (q * 3));
 
       count = b.write_raw_rows(i * q, (i + 1) * q, send_buffer.get(), count);
-      assert (count == (q * 3) + q);
+      assert (count == (q * 3) + (q * n_systems));
 
       // Do not send to yourself in a blocking manner, as it deadlocks on macOS (but not on Linux, it seems).
       if (i != 0) {
@@ -52,7 +56,7 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
 
   // Receive our chunk of A, plus the corresponding data from b.
   if (local_id != 0) {
-    MPI_Recv(recv_buffer.get(), 3 * q + q, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
+    MPI_Recv(recv_buffer.get(), (q * 3) + (q * n_systems), MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
   }
 
   // We got our data, now let's assemble our matrices. We start with Ai1, which is still a banded tridiagonal matrix
@@ -84,8 +88,8 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
   // In the 1D quad spline case, this is always entirely zero!
   Matrix<double> C_i_2(beta, beta, Zeros(beta * beta));
 
-  Matrix<double> b_i_1(q - beta, 1, Zeros(q - beta));
-  Matrix<double> b_i_2(beta, 1, Zeros(beta));
+  Matrix<double> b_i_1(q - beta, n_systems, Zeros((q - beta) * n_systems));
+  Matrix<double> b_i_2(beta, n_systems, Zeros(beta * n_systems));
 
   uint32_t offset = 3 * q;
   offset = b_i_1.set_from(recv_buffer, offset);
@@ -99,6 +103,7 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
     // There is no C_1 block for first proc.
     C_i_1(0, beta - 1) = recv_buffer[0];
   }
+  MPI_Barrier(MPI_COMM_WORLD);    // TODO remove, minor
   cout << "[PP2] " << local_id << ": data received; matrix assembly OK." << endl;
 
   // Step 1: LU factor in-place Ai1 in each processor i.
@@ -118,6 +123,7 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
   auto b_i_1_prime = SolveDecomposed(A_i_1, b_i_1);
 //  cout << "Debug PP2 in " << local_id << ", b_i_1' = " << b_i_1_prime << endl;
 //  cout << "Debug PP2 in " << local_id << ", A_i_3  = " << A_i_3 << endl;
+  cout << "Decomposed OK!" << endl;
 
   // Step 4.5: Send C_i_1_prime back from all nodes except first. (Which doesn't have a proper C_i_1_prime anyway!)
   int C_i_1_prime_els = C_i_1_prime.rows_ * C_i_1_prime.cols_;
@@ -173,15 +179,14 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
   if (local_id > 0) {
     // Send b_i_1_prime back.
     uint32_t count = b_i_1_prime.write_raw(send_buffer.get(), 0);
-    assert(count == b_i_1_prime.rows_);
-
+    assert(count == b_i_1_prime.rows_ * n_systems);
     MPI_Send(send_buffer.get(), count, MPI_DOUBLE, local_id - 1, 0, MPI_COMM_WORLD);
   }
 
   Matrix<double> b_i_plus_1_1_prime(b_i_1_prime);
   Matrix<double> b_i_2_prime(b_i_2);
   if (local_id < n_procs - 1) {
-    MPI_Recv(recv_buffer.get(), b_i_1_prime.rows_, MPI_DOUBLE, local_id + 1, 0, MPI_COMM_WORLD, &status);
+    MPI_Recv(recv_buffer.get(), b_i_1_prime.rows_ * n_systems, MPI_DOUBLE, local_id + 1, 0, MPI_COMM_WORLD, &status);
     b_i_plus_1_1_prime.set_from(recv_buffer.get());
 
     b_i_2_prime = b_i_2 - A_i_3 * b_i_1_prime - B_i_1 * b_i_plus_1_1_prime;
@@ -190,7 +195,7 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
     b_i_2_prime = b_i_2 - A_i_3 * b_i_1_prime;
   }
 
-  // Step 9: Send bits back to node 0 to form the reduced system, which should now be much smaller!
+  // Step 9: Send bits back to node 0 to form the reduced system(s), which should now be much smaller!
   // This could also be implemented by doing an all-to-all broadcast to assemble the reduced system in every node and
   // solve it in every node at the same time, avoiding to do communication for step 10. This method saves power,
   // since it only solves the reduced system on one node, but induces a little bit of extra latency because of the
@@ -214,26 +219,29 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
 
   old_count = count;
   count = b_i_2_prime.write_raw(send_buffer.get(), count);
-  assert(count - old_count == b_i_2_prime.rows_);
+  assert(count - old_count == b_i_2_prime.rows_ * n_systems);
 
-//  cout << "Will make primary send, count = " << count << "." << endl;
+  cout << "Will make primary send towards generating reduced system, count = " << count << "." << endl;
   MPI_Isend(send_buffer.get(), count, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &send_request);
+  cout << "Send complete." << endl;
 
   MASTER {
     // TODO(andreib): Store reduced A as banded matrix, bandwidth = 2 * beta.
     Matrix<double> reduced_A(n_procs * beta, n_procs * beta, Zeros(n_procs * beta * n_procs * beta));
-    Matrix<double> reduced_b(n_procs * beta, 1, Zeros(n_procs * beta));
+    Matrix<double> reduced_b(n_procs * beta, n_systems, Zeros(n_procs * beta * n_systems));
+    cout << "Reduced system allocated OK." << endl;
 
     for (int i = 0; i < n_procs; ++i) {
-      count = A_i_4_prime.rows_ * A_i_4_prime.cols_ + b_i_2_prime.rows_;
+      cout << "Recv data for reduced system from " << i << "..." << endl;
+      count = A_i_4_prime.rows_ * A_i_4_prime.cols_ + b_i_2_prime.rows_ * n_systems;
       count += C_i_2_prime.rows_ * C_i_2_prime.cols_;
       if (i != 0 && i != n_procs - 1) {
         count += C_i_2_prime.rows_ * C_i_2_prime.cols_;
       }
 
       MPI_Recv(recv_buffer.get(), count, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status);
+      cout << "Reduced system recv from " << i << " OK. Count = " << count << endl;
       uint32_t cur_offset = 0;
-
       if(i > 0) {
         cur_offset = C_i_2_prime.set_from(recv_buffer.get(), cur_offset);
       }
@@ -249,7 +257,6 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
       // The reduced system matrix consists of (beta x beta)-sized blocks.
       for(uint32_t j = 0; j < beta; ++j) {
         for(uint32_t k = 0; k < beta; ++k) {
-
           if (i > 0) {
             reduced_A(i * beta + j, (i - 1) * beta + k) = C_i_2_prime(j, k);
           }
@@ -261,15 +268,17 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
           }
         }
       }
-
+      cout << "Reduced system A formed OK. " << i << " OK." << endl;
       for(uint32_t j = 0; j < beta; ++j) {
-        reduced_b(i * beta + j, 0) = b_i_2_prime(j, 0);
+        for(uint32_t k = 0; k < n_systems; ++k) {
+          reduced_b(i * beta + j, k) = b_i_2_prime(j, k);
+        }
       }
+      cout << "Reduced system b formed OK. " << i << " OK." << endl;
     }
 
 //    cout << "PP2 reduced system:\n" << reduced_A << "\n PP2 reduced b:" << reduced_b << endl;
 //    cout << "Original was: \n" << A << endl;
-
     vector<double> band_data;
     band_data.push_back(0.0);
     for(uint32_t j = 0; j < n_procs * beta; ++j) {
@@ -287,42 +296,53 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
 //    cout << reduced_A_banded << endl;
 
     // Solve reduced system on the MASTER node.
+    cout << "Will solve serial system." << endl;
     auto x_i_2_all = SolveSerial(reduced_A_banded, reduced_b, true);
+    cout << "Serial solve OK." << endl;
 
 //    cout << "[PP2] Part of solution: " << x_i_2_all << endl;
 
     // Send x_2 chunks to all nodes so they can compute the x_1 chunks.
     for(int i = 0; i < n_procs; ++i) {
       for(uint32_t j = 0; j < beta; ++j) {
-        send_buffer[j] = x_i_2_all(i * beta + j, 0);
+        for(uint32_t k = 0; k < n_systems; ++k) {
+          send_buffer[j * n_systems + k] = x_i_2_all(i * beta + j, k);
+        }
       }
-      MPI_Isend(send_buffer.get(), beta, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &send_request);
+      MPI_Isend(send_buffer.get(), beta * n_systems, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &send_request);
     }
-  }
+  }   // End 'MASTER' block solving and managing the reduced system.
 
-  MPI_Recv(recv_buffer.get(), beta, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
-  Matrix<double> x_i_2(beta, 1UL, Zeros(beta));
+  MPI_Barrier(MPI_COMM_WORLD);
+  cout << "Reduced prep OK." << endl;
+
+  MPI_Recv(recv_buffer.get(), beta * n_systems, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
+  Matrix<double> x_i_2(beta, n_systems, Zeros(beta * n_systems));
   x_i_2.set_from(recv_buffer, 0);
+
+  cout << "x_i_2 OK" << endl;
 
   // Step 10: Compute missing chunks from x (xi1 for all but first proc, and x11 specifically).
   if (local_id < n_procs - 1) {
     // Send x_2 forward.
     x_i_2.write_raw(send_buffer, 0);
-    MPI_Send(send_buffer.get(), beta, MPI_DOUBLE, local_id + 1, 0, MPI_COMM_WORLD);
+    MPI_Send(send_buffer.get(), beta * n_systems, MPI_DOUBLE, local_id + 1, 0, MPI_COMM_WORLD);
   }
 
-  Matrix<double> x_i_1(q - beta, 1UL, Zeros(q - beta));
+  cout << "step 10 ok" << endl;
+
+  Matrix<double> x_i_1(q - beta, n_systems, Zeros((q - beta) * n_systems));
   if (local_id > 0) {
-    MPI_Recv(recv_buffer.get(), beta, MPI_DOUBLE, local_id - 1, 0, MPI_COMM_WORLD, &status);
+    MPI_Recv(recv_buffer.get(), beta * n_systems, MPI_DOUBLE, local_id - 1, 0, MPI_COMM_WORLD, &status);
+    cout << "Initing x_i_minus_1_2" << endl;
     Matrix<double> x_i_minus_1_2(x_i_2);
     x_i_minus_1_2.set_from(recv_buffer, 0);
-//    cout << "Debug PP2, i am " << local_id << " and the prev x_i_2 is " << x_i_minus_1_2 << endl;
-
     x_i_1 = b_i_1_prime - A_i_2_prime * x_i_2 - C_i_1_prime * x_i_minus_1_2;
   }
   else {
     x_i_1 = b_i_1_prime - A_i_2_prime * x_i_2;
   }
+  cout << "Step 10 part 2 ok" << endl;
 
 //  cout << "Exchanged x_2's OK and computed x_1's." << endl;
 //  cout << "Debug PP2, " << local_id << ": x_1 = " << x_i_1 << endl;
@@ -330,25 +350,30 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
   // Ok, now send all x_1's to the master node, 0.
   count = x_i_1.write_raw(send_buffer, 0);
   x_i_2.write_raw(send_buffer, count);
-  MPI_Isend(send_buffer.get(), q, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &send_request);
+  MPI_Isend(send_buffer.get(), q * n_systems, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &send_request);
 
-  Matrix<double> x_all(n, 1, Zeros(n));
+  Matrix<double> x_all(n, n_systems, Zeros(n * n_systems));
   MASTER {
     for(int i = 0; i < n_procs; ++i) {
-      MPI_Recv(recv_buffer.get(), q, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status);
+      MPI_Recv(recv_buffer.get(), q * n_systems, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status);
       int idx;
 
       for(uint32_t j = 0; j < q; ++j) {
         idx = i * q + j;
-        x_all(idx, 0) = recv_buffer[j];
+        for(uint32_t k = 0; k < n_systems; ++k) {
+          // XXX: double check indexing math
+          x_all(idx, k) = recv_buffer[j * n_systems + k];
+        }
       }
     }
 
     x_all.write_raw(send_buffer, 0);
   }
+  cout << "About to do bcast!" << endl;
 
+  // TODO(andreib): Do the broadcast in-place!
   // Broadcast the final solution to all nodes so it can be returned.
-  MPI_Bcast(send_buffer.get(), n, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(send_buffer.get(), n * n_procs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   x_all.set_from(send_buffer, 0);
   return x_all;
 }

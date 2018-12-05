@@ -284,19 +284,19 @@ void Save(const SplineSolution<double> &solution, const string &out_dir) {
 }
 
 /// A simple test to ensure that we support multiple right-hand sides OK. (And a pentadiagonal matrix.)
-void TestMultiRHS() {
-  // Bandwidth is 2 so effective bw is 5. Rows have 3, 4, 5, ..., 5, 4, 3 elements.
+int TestMultiRHS() {
+  MPI_SETUP;
   BandMatrix<double> A(8, {
     // Solution: pad with zeros in the beginning and end for ease of indexing.
-     0, 0, 1, 0, 0,
-     0, 0, 2, 0, 0,
-     0, 0, 3, 0, 0,
-         0, 0, 4, 0, 0,
-            0, 0, 5, 0, 0,
-               0, 0, 6, 0, 0,
-                  0, 0, 7, 0, 0,
-                     0, 0, 8, 0, 0
-    }, 2);
+      0, 1, 0,
+        0, 2, 0,
+          0, 3, 0,
+             0, 4, 0,
+               0, 5, 0,
+                   0, 6, 0,
+                      0, 7, 0,
+                         0, 8, 0
+    }, 1);
   Matrix<double> B(8, 3, {
     1, 0, 2,
     2, 0, 2,
@@ -317,6 +317,9 @@ void TestMultiRHS() {
   cout << A << endl << B << endl << C << endl;
 
   auto x = SolveSerial(A, B, true);
+  Matrix<double> x_para = SolveParallel(A, B);
+
+  cout << "Return from SolveParallel breh!" << endl;
 
   Matrix<double> expected_x(8, 3, {
     1, 0, 2,
@@ -355,12 +358,33 @@ void TestMultiRHS() {
       0, 0, 0,
   });
 
-  assert (expected_x.all_close(x));
-  cout << "Multi-system solver seems to be OK." << endl;
+//  assert (expected_x.all_close(x));
+  cout << endl;
+  MPI_Barrier(MPI_COMM_WORLD);
+  cout << endl;
 
-  auto x_pad = SolveSerial(A_pad, B_pad, true);
-  cout << x << endl;
-  cout << x_pad << endl;
+  MASTER {
+    double delta = fabs((expected_x - x_para).norm());
+    if (delta > 1e-5) {
+      cerr << "Expected:" << endl;
+      stringstream ss_e;
+      ss_e << expected_x;
+      cerr << ss_e.str() << endl;
+      cerr << "Actual:" << endl;
+      stringstream ss_a;
+      ss_a << x_para;
+      cerr << ss_a.str() << endl;
+
+      throw runtime_error(Format("Incorrect solution. Delta was: %.8f.", delta));
+    }
+  }
+//  assert(x.all_close(x_para));
+  cout << "Multi-system solvers seem to be OK." << endl;
+
+//  auto x_pad = SolveSerial(A_pad, B_pad, true);
+//  cout << x << endl;
+//  cout << x_pad << endl;
+  return 0;
 }
 
 /// Computes the max abs error of the solution on the specified points of the problem.
@@ -408,8 +432,7 @@ double MaxAbsErrorParallel(
   return recvbuf;
 }
 
-int SplineExperiment(int argc, char **argv) {
-  MPI_Init(&argc, &argv);
+int SplineExperiment() {
   MPI_SETUP;
   vector<uint32_t> ns = {14, 30, 62, 126, 254, 510};
 //  vector<uint32_t> ns = {62, 126, 254, 510};
@@ -435,7 +458,6 @@ int SplineExperiment(int argc, char **argv) {
 
       auto knots = Linspace(problem.a_, problem.b_, problem.n_ + 1);
       auto denser_pts = Linspace(problem.a_, problem.b_, 3 * problem.n_ + 1);
-
       // Initial code I used to compute erorrs sequentially.
 //      double max_knot_error = -1.0;
 //      double max_dense_error = -1.0;
@@ -456,6 +478,10 @@ int SplineExperiment(int argc, char **argv) {
              << mke_p << endl;
         cout << "problem: " << problem.GetFullName() << " (n = " << n << "), max error on the (3n + 1) pts = "
              << mde_p << endl;
+
+        // Some sanity checks.
+        assert(mde_p - mke_p > -1e-8);
+        assert(n < 75 || mke_p < 1e-4);
       };
 
 //      MASTER {
@@ -481,13 +507,15 @@ int SplineExperiment(int argc, char **argv) {
       }
     }
   }
-
-  MPI_Finalize();
   return 0;
 }
 
 
 int main(int argc, char **argv) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
-  return SplineExperiment(argc, argv);
+  MPI_Init(&argc, &argv);
+  int exit_code = SplineExperiment();
+//  int exit_code = TestMultiRHS();
+  MPI_Finalize();
+  return exit_code;
 }

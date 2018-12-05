@@ -84,4 +84,52 @@ Eigen::VectorXd DeBoorParallelA(const ESMatrix &A, const ESMatrix &B, const Eige
 }
 
 
+Eigen::VectorXd DeBoorParallelB(const ESMatrix &A, const ESMatrix &B, const Eigen::VectorXd &u) {
+  // TODO(andreib): Don't assume each node knows A!
+  using namespace Eigen;
+  using namespace std;
+  MPI_SETUP;
+  if (n_procs <= 1) {
+    throw runtime_error("Please run this with 'mpirun' on at least 2 processors (4 recommended).");
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  unsigned long n = A.rows();
+  unsigned long m = B.rows();
+  assert(A.rows() == A.cols());
+  assert(B.rows() == B.cols());
+  if (!IsPowerOfTwo(n) || !IsPowerOfTwo(m)) {
+    throw runtime_error(Format("The dimensions of the system being solved in parallel must be powers of two for "
+                               "simplicity, but got n = %d and m = %d.", n, m));
+  }
+
+  int partition_rows = n / n_procs;
+  int partition_cols = m / n_procs;
+
+  // In alternative 2, we assume B, and rhs_matrix are available in each processor, but A to be distributed among the
+  // processors.
+//  SparseLU<SparseMatrix<double>> A_solver; A_solver.compute(A);
+  SparseLU<SparseMatrix<double>> B_solver; B_solver.compute(B);
+
+  // The first stage of Alternative 2 (here, called "B") is the same as in the first one.
+  MatrixXd rhs_matrix(u);
+  rhs_matrix.resize(n, m);
+  MatrixXd local_D = MatrixXd::Zero(partition_rows, m);
+  int local_start = local_id * partition_rows;
+  int local_end = (local_id + 1) * partition_rows;
+  for (int i = local_start; i < local_end; ++i) {
+    VectorXd g_i = rhs_matrix.row(i);
+    local_D.row(i - local_start) = B_solver.solve(g_i).transpose();
+  }
+  cout << "Done first parallel solver loop." << endl;
+
+  // TODO(andreib): Solve AX = B in parallel with a tridiagonal, using PP2.
+  // TODO(andreib): SolveParallel implementation of PP2 assumes the full A is on master and splits it up to everyone.
+  // You should update the implementation to account for the fact that A is already distributed row-wise in this
+  // problem.
+
+
+}
+
+
 #endif //HPSC_DEBOOR_PARALLEL_H
