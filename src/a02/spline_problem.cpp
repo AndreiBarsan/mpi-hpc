@@ -286,18 +286,33 @@ void Save(const SplineSolution<double> &solution, const string &out_dir) {
 /// A simple test to ensure that we support multiple right-hand sides OK. (And a pentadiagonal matrix.)
 int TestMultiRHS() {
   MPI_SETUP;
-  BandMatrix<double> A(8, {
-    // Solution: pad with zeros in the beginning and end for ease of indexing.
+  BandMatrix<double> A(16, {
       0, 1, 0,
-        0, 2, 0,
-          0, 3, 0,
-             0, 4, 0,
-               0, 5, 0,
-                   0, 6, 0,
-                      0, 7, 0,
-                         0, 8, 0
+      0, 2, 0,
+      0, 3, 0,
+      0, 4, 0,
+      0, 5, 0,
+      0, 6, 0,
+      0, 7, 0,
+      0, 8, 0,
+      0, 1, 0,
+      0, 2, 0,
+      0, 3, 0,
+      0, 4, 0,
+      0, 5, 0,
+      0, 6, 0,
+      0, 7, 0,
+      0, 8, 0
     }, 1);
-  Matrix<double> B(8, 3, {
+  Matrix<double> B(16, 3, {
+    1, 0, 2,
+    2, 0, 2,
+    3, 0, 2,
+    4, 0, 2,
+    5, 0, 2,
+    6, 0, 2,
+    7, 0, 2,
+    8, 0, 2,
     1, 0, 2,
     2, 0, 2,
     3, 0, 2,
@@ -307,21 +322,21 @@ int TestMultiRHS() {
     7, 0, 2,
     8, 0, 2,
   });
-  BandMatrix<double> C(5, {
-    0, 1, 1,
-    2, 2, 2,
-    3, 3, 3,
-    4, 4, 4,
-    5, 5, 0
-  });
-  cout << A << endl << B << endl << C << endl;
 
   auto x = SolveSerial(A, B, true);
   Matrix<double> x_para = SolveParallel(A, B);
 
   cout << "Return from SolveParallel breh!" << endl;
 
-  Matrix<double> expected_x(8, 3, {
+  Matrix<double> expected_x(16, 3, {
+    1, 0, 2,
+    1, 0, 1,
+    1, 0, 0.666667,
+    1, 0, 0.5,
+    1, 0, 0.4,
+    1, 0, 0.333333,
+    1, 0, 0.285714,
+    1, 0, 0.25,
     1, 0, 2,
     1, 0, 1,
     1, 0, 0.666667,
@@ -514,8 +529,8 @@ int SplineExperiment() {
 int main(int argc, char **argv) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   MPI_Init(&argc, &argv);
-  int exit_code = SplineExperiment();
-//  int exit_code = TestMultiRHS();
+//  int exit_code = SplineExperiment();
+  int exit_code = TestMultiRHS();
   MPI_Finalize();
   return exit_code;
 }
