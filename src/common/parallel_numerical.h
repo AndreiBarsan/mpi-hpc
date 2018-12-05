@@ -26,7 +26,6 @@ Matrix<double> SolveParallelDebug(const BandMatrix<double> &A_raw, const Matrix<
 /// \param A An n x n banded matrix.
 /// \param b An n x 1 vector.
 /// \return The n x 1 solution vector.
-Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b);
-
+Matrix<double> SolveParallel(const BandMatrix<double> &A, const Matrix<double> &b, bool b_is_distributed = false);
 
 #endif //HPSC_PARALLEL_NUMERICAL_H

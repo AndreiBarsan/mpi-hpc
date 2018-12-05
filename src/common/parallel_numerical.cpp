@@ -9,7 +9,11 @@
 // TODO(andreib): You are always doing write/send/recv/read. Extract that into an utility!
 // TODO(andreib): Initialize matrix class with zeros by default; avoid silly bugs this way!
 
-Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
+Matrix<double> SolveParallel(
+    const BandMatrix<double> &A,
+    const Matrix<double> &b,
+    bool b_is_distributed
+) {
   MPI_SETUP;
   uint32_t n = A.get_n();
   uint32_t q = static_cast<uint32_t>(n / n_procs);
@@ -37,8 +41,11 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
       // Send all the data necessary for one processor in a single transfer to reduce overhead as much as possible.
       uint32_t count = A.write_raw_rows(i * q, (i + 1) * q, send_buffer.get(), 0);
       assert (count == (q * 3));
-      count = b.write_raw_rows(i * q, (i + 1) * q, send_buffer.get(), count);
-      assert (count == (q * 3) + (q * n_systems));
+
+      if (! b_is_distributed) {
+        count = b.write_raw_rows(i * q, (i + 1) * q, send_buffer.get(), count);
+        assert (count == (q * 3) + (q * n_systems));
+      }
 
       // Do not send to yourself in a blocking manner, as it deadlocks on macOS (but not on Linux, it seems).
       if (i != 0) {
@@ -54,7 +61,8 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
 
   // Receive our chunk of A, plus the corresponding data from b.
   if (local_id != 0) {
-    MPI_Recv(recv_buffer.get(), (q * 3) + (q * n_systems), MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
+    int expected_count = b_is_distributed ? (q * 3) + (q * n_systems) : (q * 3);
+    MPI_Recv(recv_buffer.get(), expected_count, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
   }
 
   // We got our data, now let's assemble our matrices. We start with Ai1, which is still a banded tridiagonal matrix
@@ -90,8 +98,16 @@ Matrix<double> SolveParallel(BandMatrix<double> &A, Matrix<double> &b) {
   Matrix<double> b_i_2(beta, n_systems, Zeros(beta * n_systems));
 
   uint32_t offset = 3 * q;
-  offset = b_i_1.set_from(recv_buffer, offset);
-  offset = b_i_2.set_from(recv_buffer, offset);
+  if (b_is_distributed) {
+    // Our b chunks were already split up in the nodes, so we just set b_i_1 and b_i_2 from b.
+    assert(b.rows_ == q && b.cols_ == n_systems);
+
+    throw runtime_error("All golden bro!");
+  }
+  else {
+    offset = b_i_1.set_from(recv_buffer, offset);
+    offset = b_i_2.set_from(recv_buffer, offset);
+  }
 
   BandMatrix<double> A_i_1(static_cast<uint32_t>(q - beta), A_i_1_data);
   BandMatrix<double> A_i_4(static_cast<uint32_t>(beta), A_i_4_data);

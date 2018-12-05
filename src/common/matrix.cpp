@@ -22,6 +22,27 @@ Matrix<double> ToMatrix(const EMatrix &eigen) {
   return Matrix<double>(eigen.rows(), eigen.cols(), data);
 }
 
+BandMatrix<double> ToTridiagonalMatrix(const ESMatrix &eigen) {
+  if (eigen.rows() != eigen.cols()) {
+    throw runtime_error("Must pass a square matrix!");
+  }
+  long n = eigen.rows();
+  std::vector<double> data; data.reserve(n * 3);
+  data.push_back(0);
+  for(long i = 0; i < n; ++i) {
+    if (i > 0) {
+      data.push_back(eigen.coeff(i, i - 1));
+    }
+    data.push_back(eigen.coeff(i, i));
+    if (i < n - 1) {
+      data.push_back(eigen.coeff(i, i + 1));
+    }
+  }
+  data.push_back(0);
+
+  return BandMatrix<double>(n, data);
+}
+
 EMatrix ToEigen(const BandMatrix<double> &mat) {
   EMatrix res;
   res.resize(mat.get_n(), mat.get_n());

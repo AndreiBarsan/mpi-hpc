@@ -20,6 +20,7 @@
 
 #include <Eigen/Core>
 
+#include "common/eigen_helpers.h"
 #include "common/utils.h"
 
 using EMatrix = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>;
@@ -226,6 +227,9 @@ class BandMatrix {
 EMatrix ToEigen(const Matrix<double> &mat);;
 
 Matrix<double> ToMatrix(const EMatrix &eigen);
+
+/// Hacky method which assumes the given sparse eigen matrix is tridiagonal, but does NOT check that!
+BandMatrix<double> ToTridiagonalMatrix(const ESMatrix &eigen);
 
 EMatrix ToEigen(const BandMatrix<double> &mat);;
 

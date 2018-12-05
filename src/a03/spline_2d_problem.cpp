@@ -11,8 +11,8 @@
 
 #include <Eigen/SparseCore>
 #include <Eigen/SparseLU>
-#include <unsupported/Eigen/KroneckerProduct>
 #include <gflags/gflags.h>
+#include <unsupported/Eigen/KroneckerProduct>
 
 #include "common/mpi_helpers.h"
 #include "common/serial_numerical.h"
@@ -22,7 +22,6 @@
 
 // X <---> N points.
 // Y <---> M points.
-//
 // N is the first dimension, M is the second dimension.
 
 
@@ -46,7 +45,6 @@ DEFINE_string(method, "eigen", "Name of the method used to solve the spline prob
 // complexities; one major mistake was you accounted for sparse/triangular matrices when doing e.g.,
 // LU/fwd/back-subst, but NOT when doing matrix-matrix and matrix-vector multiplication, which you should have!
 
-// TODO(andreib): Use MPI_Alltoall for the transposition of the matrix of intermediate results.
 // TODO(andreib): Group messages together as much as possible.
 // TODO(andreib): Experiment with the second function (beta) in problem 2.
 // TODO(andreib): Assert errors produced by parallel method are about the same as sequential ones in Q1.
@@ -223,10 +221,10 @@ class Spline2DSolution {
       throw runtime_error(Format("Found unusually large error in a control point. Maximum error over control points "
                                  "was %.10f, larger than the threshold of %.10f.", max_err, kMaxControlPointError));
     }
-    // XXX TODO(andreib): This grid must be a FIXED size ALWAYS. Check handout!
     auto denser_grid = MeshGrid(
-        GetControlPoints1d(3 * problem.n_ + 1, problem.a_x_, problem.b_x_),
-        GetControlPoints1d(3 * problem.m_ + 1, problem.a_y_, problem.b_y_)
+        // Fixed size grid for all n, m, as indicated in the handout.
+        GetControlPoints1d(38, problem.a_x_, problem.b_x_),
+        GetControlPoints1d(38, problem.a_y_, problem.b_y_)
     );
     double max_err_dense = GetMaxError(denser_grid, problem, *this);
     if (max_err_dense - max_err < -kMaxControlPointError) {
@@ -373,8 +371,11 @@ Spline2DSolution<double> Solve(const Spline2DProblem &problem, SolverType solver
       sol.resize(problem.n_ + 2, problem.m_ + 2);
       return Spline2DSolution<double>(problem.Getu(), sol, problem);
     }
-    case kParallelDeBoorB:
-        throw runtime_error("Not supported yet.");
+    case kParallelDeBoorB: {
+      Eigen::MatrixXd sol = DeBoorParallelB(problem.S, problem.T, problem.Getu());
+      sol.resize(problem.n_ + 2, problem.m_ + 2);
+      return Spline2DSolution<double>(problem.Getu(), sol, problem);
+    }
     default:
       throw runtime_error(Format("Unknown solver type requested: %d", solver_type));
   }
