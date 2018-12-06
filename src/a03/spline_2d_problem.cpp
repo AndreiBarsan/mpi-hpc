@@ -261,6 +261,17 @@ Spline2DProblem BuildSecondProblem(uint32_t n, uint32_t m) {
   return Spline2DProblem("sin-exp", n, m, function, 0.0, 0.0, M_PI * 4, M_PI);
 }
 
+/// This is an interesting problem which makes it very obvious visually how a denser grid leads to fewer artifacts.
+Spline2DProblem BuildThirdProblem(uint32_t n, uint32_t m) {
+  auto function = [](double x, double y) { return sin(x * x) * cos(y * y); };
+  return Spline2DProblem("sin(x^2)cos(y^2)", n, m, function, 0.0, 0.0, M_PI * 4, M_PI);
+}
+
+Spline2DProblem BuildRosenbrock(uint32_t n, uint32_t m, double a = 1, double b = 100) {
+  auto function = [a, b](double x, double y) { return (a - x) * (a - x) + b * (y - x * x) * (y - x * x); };
+  return Spline2DProblem("rosenbrock", n, m, function, 0.0, 0.0, 5.0, 5.0);
+}
+
 double GetMaxError(const Eigen::MatrixX2d &cpoints, const Spline2DProblem& p, const Spline2DSolution<double>& s) {
   double max_err = -1.0;
   for(int i = 0; i < cpoints.rows(); ++i) {
@@ -408,10 +419,14 @@ int Spline2DExperiment() {
 
   // TODO pass problem sizes as command line arg.
 //  int problem_sizes[] = {30, 62, 126, 254, 510};
-  int problem_sizes[] = {30, 62, 126}; //, 254, 510};
+  int problem_sizes[] = {30, 62, 126, 254, 510};
+//  int problem_sizes[] = {254};
 //  int problem_sizes[] = {30}; // For debugging (126+ problems are VERY slow with generic sparse LU).
   for (const int& size : problem_sizes) {
-    for (const auto& problem : {BuildFirstProblem(size, size), BuildSecondProblem(size, size)}) {
+    for (const auto& problem : {BuildFirstProblem(size, size),
+                                BuildSecondProblem(size, size),
+                                BuildThirdProblem(size, size),
+                                BuildRosenbrock(size, size)}) {
 //    for (const auto& problem : {BuildSecondProblem(size, size)}) {
       MASTER {
         cout << "Starting 2D spline interpolation experiment." << endl;

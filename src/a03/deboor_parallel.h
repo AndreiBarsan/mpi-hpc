@@ -126,7 +126,6 @@ Eigen::VectorXd DeBoorParallelB(const ESMatrix &A, const ESMatrix &B, const Eige
   }
   cout << "Done first parallel solver loop." << endl;
 
-  // TODO(andreib): Solve AX = B in parallel with a tridiagonal, using PP2.
   // TODO(andreib): SolveParallel implementation of PP2 assumes the full A is on master and splits it up to everyone.
   // You should update the implementation to account for the fact that A is already distributed row-wise in this
   // problem.
@@ -134,10 +133,9 @@ Eigen::VectorXd DeBoorParallelB(const ESMatrix &A, const ESMatrix &B, const Eige
   ::Matrix<double> local_D_custom = ToMatrix(local_D);
   ::Matrix<double> distributed_solution = ::SolveParallel(A_custom, local_D_custom, true);
 
-  cout << "FAKING RESULTS OF METHOD B LOL" << endl;
-  return DeBoorParallelA(A, B, u);
-
-
+  EMatrix distributed_solution_eigen = ToEigen(distributed_solution);
+  distributed_solution_eigen.resize(n * m, 1);
+  return distributed_solution_eigen;
 }
 
 

@@ -283,7 +283,20 @@ void Save(const SplineSolution<double> &solution, const string &out_dir) {
   dump << "}";
 }
 
-/// A simple test to ensure that we support multiple right-hand sides OK. (And a pentadiagonal matrix.)
+Matrix<double> RepeatCols(const Matrix<double> &mat, int times) {
+  vector<double> new_data;
+  new_data.reserve(mat.rows_ * mat.cols_ * times);
+  for(int i = 0; i < mat.rows_; ++i) {
+    for(int rep = 0; rep < times; ++rep) {
+      for(int j = 0; j < mat.cols_; ++j) {
+        new_data.push_back(mat(i, j));
+      }
+    }
+  }
+  return Matrix<double>(mat.rows_, mat.cols_ * times, new_data);
+}
+
+/// A simple test to ensure that we support multiple right-hand sides OK.
 int TestMultiRHS() {
   MPI_SETUP;
   BandMatrix<double> A(16, {
@@ -323,10 +336,12 @@ int TestMultiRHS() {
     8, 0, 2,
   });
 
+  // To catch bug which seems to happen around 256 right-sides.
+  int rhs_repeat = 150;
+  B = RepeatCols(B, rhs_repeat);
+
   auto x = SolveSerial(A, B, true);
   Matrix<double> x_para = SolveParallel(A, B);
-
-  cout << "Return from SolveParallel breh!" << endl;
 
   Matrix<double> expected_x(16, 3, {
     1, 0, 2,
@@ -346,6 +361,7 @@ int TestMultiRHS() {
     1, 0, 0.285714,
     1, 0, 0.25,
   });
+  expected_x = RepeatCols(expected_x, rhs_repeat);
 
   // If we pad the system naively, do we get the same solution?
   BandMatrix<double> A_pad(10, {
@@ -379,7 +395,8 @@ int TestMultiRHS() {
   cout << endl;
 
   MASTER {
-    double delta = fabs((expected_x - x_para).norm());
+    auto delta_vec = expected_x - x_para;
+    double delta = delta_vec.norm();
     if (delta > 1e-5) {
       cerr << "Expected:" << endl;
       stringstream ss_e;
@@ -390,10 +407,27 @@ int TestMultiRHS() {
       ss_a << x_para;
       cerr << ss_a.str() << endl;
 
+      int sketchy = 0; int ok = 0;
+      for(int i = 0; i < delta_vec.rows_; ++i) {
+        for(int j = 0; j < delta_vec.cols_; ++j) {
+          if (fabs(delta_vec(i, j)) > 1e-2) {
+            if (sketchy++ < 2000) {
+              cerr << "Sketchy element with delta " << delta_vec(i, j) << " at idx = " << i << ", " << j << ": "
+                   << "Expected: " << expected_x(i, j) << " but got " << x_para(i, j) << "." << endl;
+            }
+          } else {
+            ok++;
+          }
+        }
+      }
+      cerr << sketchy << " sketchy elements found." << endl;
+      cerr << ok << " ok elements found." << endl;
+
       throw runtime_error(Format("Incorrect solution. Delta was: %.8f.", delta));
     }
   }
 //  assert(x.all_close(x_para));
+  MPI_Barrier(MPI_COMM_WORLD);
   cout << "Multi-system solvers seem to be OK." << endl;
 
 //  auto x_pad = SolveSerial(A_pad, B_pad, true);

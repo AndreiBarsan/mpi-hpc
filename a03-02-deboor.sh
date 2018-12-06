@@ -9,7 +9,7 @@ set -eu -o pipefail
 source "config.sh"
 source "build_cmake.sh.inc"
 
-N_NODES=4
+N_NODES=8
 
 
 ################################################################################

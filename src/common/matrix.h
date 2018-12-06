@@ -224,14 +224,14 @@ class BandMatrix {
 //  return true;
 //}
 
-EMatrix ToEigen(const Matrix<double> &mat);;
+EMatrix ToEigen(const Matrix<double> &mat);
 
 Matrix<double> ToMatrix(const EMatrix &eigen);
 
 /// Hacky method which assumes the given sparse eigen matrix is tridiagonal, but does NOT check that!
 BandMatrix<double> ToTridiagonalMatrix(const ESMatrix &eigen);
 
-EMatrix ToEigen(const BandMatrix<double> &mat);;
+EMatrix ToEigen(const BandMatrix<double> &mat);
 
 
 

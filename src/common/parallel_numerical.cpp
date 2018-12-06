@@ -8,6 +8,7 @@
 // TODO-LOW(andreib): Implement low-tri/up-tri matrix class to improve efficiency of certain multiplications even more.
 // TODO(andreib): You are always doing write/send/recv/read. Extract that into an utility!
 // TODO(andreib): Initialize matrix class with zeros by default; avoid silly bugs this way!
+// TODO(andreib): Double check all ISend operations to ensure memory does not get corrupted!
 
 Matrix<double> SolveParallel(
     const BandMatrix<double> &A,
@@ -28,8 +29,9 @@ Matrix<double> SolveParallel(
   uint32_t n_systems = b.cols_;
 
   // Note: the make_unique<T[]> support is a C++14 thing.
-  auto send_buffer = make_unique<double[]>(A.get_n() * A.get_bandwidth() * n_systems * 4);
-  auto recv_buffer = make_unique<double[]>(A.get_n() * A.get_bandwidth() * n_systems * 4);
+  long buffer_size = A.get_n() * A.get_bandwidth() * n_systems * 2;
+  auto send_buffer = make_unique<double[]>(buffer_size);
+  auto recv_buffer = make_unique<double[]>(buffer_size);
 
   MASTER {
     // Node 0 is considered the master node. We assume it is the only node which originally has the full A and b,
@@ -61,7 +63,7 @@ Matrix<double> SolveParallel(
 
   // Receive our chunk of A, plus the corresponding data from b.
   if (local_id != 0) {
-    int expected_count = b_is_distributed ? (q * 3) + (q * n_systems) : (q * 3);
+    int expected_count = b_is_distributed ? (q * 3) : (q * 3) + (q * n_systems);
     MPI_Recv(recv_buffer.get(), expected_count, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
   }
 
@@ -102,7 +104,17 @@ Matrix<double> SolveParallel(
     // Our b chunks were already split up in the nodes, so we just set b_i_1 and b_i_2 from b.
     assert(b.rows_ == q && b.cols_ == n_systems);
 
-    throw runtime_error("All golden bro!");
+    for(int i = 0; i < q - beta; ++i) {
+      for(int j = 0; j < n_systems; ++j) {
+        b_i_1(i, j) = b(i, j);
+      }
+    }
+
+    for(int i = 0; i < beta; ++i) {
+      for(int j = 0; j < n_systems; ++j) {
+        b_i_2(i, j) = b(q - beta + i, j);
+      }
+    }
   }
   else {
     offset = b_i_1.set_from(recv_buffer, offset);
@@ -280,7 +292,7 @@ Matrix<double> SolveParallel(
     }
 
 //    cout << "PP2 reduced system:\n" << reduced_A << "\n PP2 reduced b:" << reduced_b << endl;
-//    cout << "Original was: \n" << A << endl;
+
     vector<double> band_data;
     band_data.push_back(0.0);
     for(uint32_t j = 0; j < n_procs * beta; ++j) {
@@ -305,13 +317,26 @@ Matrix<double> SolveParallel(
           send_buffer[j * n_systems + k] = x_i_2_all(i * beta + j, k);
         }
       }
-      MPI_Isend(send_buffer.get(), beta * n_systems, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &send_request);
+//      MPI_Isend(send_buffer.get(), beta * n_systems, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &send_request);
+      MPI_Send(send_buffer.get(), beta * n_systems, MPI_DOUBLE, i, 0, MPI_COMM_WORLD); //, &send_request);
     }
+
+//    cout << "Reduced X: "<< x_i_2_all << endl;
   }   // End 'MASTER' block solving and managing the reduced system.
 
   MPI_Recv(recv_buffer.get(), beta * n_systems, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
   Matrix<double> x_i_2(beta, n_systems, Zeros(beta * n_systems));
   x_i_2.set_from(recv_buffer, 0);
+
+//  for(int i = 0; i < x_i_2.rows_; ++i) {
+//    for (int j = 5; j < n_systems; j += 3) {
+//      assert(x_i_2(i, j) == x_i_2(i, j - 3));
+//      assert(x_i_2(i, j - 1) == x_i_2(i, j - 4));
+//      assert(x_i_2(i, j - 2) == x_i_2(i, j - 5));
+//    }
+//  }
+//  MPI_Barrier(MPI_COMM_WORLD);      // XXX delete this
+//  cout << "x_i_2 check OK" << endl;
 
   // Step 10: Compute missing chunks from x (xi1 for all but first proc, and x11 specifically).
   if (local_id < n_procs - 1) {
@@ -354,7 +379,7 @@ Matrix<double> SolveParallel(
   }
   // TODO(andreib): Do the broadcast in-place!
   // Broadcast the final solution to all nodes so it can be returned.
-  MPI_Bcast(send_buffer.get(), n * n_procs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(send_buffer.get(), n * n_systems, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   x_all.set_from(send_buffer, 0);
   return x_all;
 }
