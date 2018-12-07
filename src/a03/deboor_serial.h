@@ -10,6 +10,7 @@
 
 #include "common/eigen_helpers.h"
 #include "common/mpi_helpers.h"
+#include "common/mpi_stopwatch.h"
 #include "a03/deboor_common.h"
 
 /// Solves a linear system defined as KroneckerProduct(A, B) x = u serially using DeBoor decomposition.
@@ -19,7 +20,8 @@
 /// \return The [nm x 1] solution vector.
 Eigen::VectorXd DeBoorDecomposition(const ESMatrix &A,
                                     const ESMatrix &B,
-                                    const Eigen::VectorXd &u) {
+                                    const Eigen::VectorXd &u,
+                                    MPIStopwatch &stopwatch) {
   using namespace Eigen;
   using namespace std;
   MPI_SETUP;
@@ -27,6 +29,7 @@ Eigen::VectorXd DeBoorDecomposition(const ESMatrix &A,
   assert(B.rows() == B.cols());
   int n = A.rows();
   int m = B.rows();
+  stopwatch.Record("init");
 
   SparseLU<SparseMatrix<double>> A_solver;
   A_solver.compute(A);
@@ -35,6 +38,7 @@ Eigen::VectorXd DeBoorDecomposition(const ESMatrix &A,
   MASTER {
     cout << "Deboor partial solvers done." << endl;
   };
+  stopwatch.Record("factorization");
 
   // TODO better name for this n x m matrix which is the resized RHS.
   MatrixXd G(u);
@@ -52,7 +56,9 @@ Eigen::VectorXd DeBoorDecomposition(const ESMatrix &A,
 // WHY THE FUCK DOES THIS WORK WITH AND WITHOUT TRANSPOSE BUT PRODUCE DIFFERENT RESULTS?
     D.row(i) = B_solver.solve(g_i).transpose();
   }
-  cout << "Done first serial solver loop." << endl;
+//  cout << "Done first serial solver loop." << endl;
+  stopwatch.Record("first_stage");
+  stopwatch.Record("transpose_stage");
 
   // This will be a communication bottleneck, since we need to transpose D here.
   // In the serial version we never have to explicitly transpose, since we can just change our access pattern to
@@ -65,6 +71,7 @@ Eigen::VectorXd DeBoorDecomposition(const ESMatrix &A,
     C.col(j) = A_solver.solve(d_prime_i);
   }
   C.resize(n * m, 1);
+  stopwatch.Record("second_stage");
   return C;
 }
 

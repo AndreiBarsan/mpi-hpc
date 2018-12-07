@@ -13,10 +13,14 @@
 
 #include "common/matrix.h"
 #include "common/mpi_eigen_helpers.h"
+#include "common/mpi_stopwatch.h"
 #include "common/parallel_numerical.h"
 #include "common/utils.h"
 
-Eigen::VectorXd DeBoorParallelA(const ESMatrix &A, const ESMatrix &B, const Eigen::VectorXd &u) {
+Eigen::VectorXd DeBoorParallelA(const ESMatrix &A,
+                                const ESMatrix &B,
+                                const Eigen::VectorXd &u,
+                                MPIStopwatch &stopwatch) {
   using namespace Eigen;
   using namespace std;
   MPI_SETUP;
@@ -25,18 +29,17 @@ Eigen::VectorXd DeBoorParallelA(const ESMatrix &A, const ESMatrix &B, const Eige
   }
   MPI_Barrier(MPI_COMM_WORLD);
 
-  unsigned long n = A.rows();
-  unsigned long m = B.rows();
+  long n = A.rows();
+  long m = B.rows();
   assert(A.rows() == A.cols());
   assert(B.rows() == B.cols());
   if (!IsPowerOfTwo(n) || !IsPowerOfTwo(m)) {
     throw runtime_error(Format("The dimensions of the system being solved in parallel must be powers of two for "
                                "simplicity, but got n = %d and m = %d.", n, m));
   }
-
-  int partition_rows = n / n_procs;
-  int partition_cols = m / n_procs;
-
+  long partition_rows = n / n_procs;
+  long partition_cols = m / n_procs;
+  stopwatch.Record("init");
   // In alternative 1, we assume A, B, and rhs_matrix are available in each processor.
   // We factor them in each processor too, in order to prepare for the next step.
   SparseLU<SparseMatrix<double>> A_solver;
@@ -46,6 +49,7 @@ Eigen::VectorXd DeBoorParallelA(const ESMatrix &A, const ESMatrix &B, const Eige
   MASTER {
       cout << "Deboor partial solvers done." << endl;
   };
+  stopwatch.Record("factorization");
 
   // Represents the RHS of the linear system as a matrix, instead of a vector.
   MatrixXd rhs_matrix(u);
@@ -58,11 +62,12 @@ Eigen::VectorXd DeBoorParallelA(const ESMatrix &A, const ESMatrix &B, const Eige
     VectorXd g_i = rhs_matrix.row(i);
     local_D.row(i - local_start) = B_solver.solve(g_i).transpose();
   }
-  cout << "Done first parallel solver loop." << endl;
+  stopwatch.Record("first_stage");
 
   // All-to-all transpose of the dense matrix D.
   MatrixXd local_D_transposed;
   TransposeEigenDense(local_D, local_D_transposed);
+  stopwatch.Record("transpose_stage");
 
   MatrixXd C = MatrixXd::Zero(n, partition_cols);
   local_start = local_id * partition_cols;
@@ -71,7 +76,7 @@ Eigen::VectorXd DeBoorParallelA(const ESMatrix &A, const ESMatrix &B, const Eige
     VectorXd d_prime_i = local_D_transposed.row(i - local_start);
     C.col(i - local_start) = A_solver.solve(d_prime_i);
   }
-  cout << "Done second parallel solver loop." << endl;
+//  cout << "Done second parallel solver loop." << endl;
 
   VectorXd C_full = VectorXd::Zero(n * m);
   MPI_Allgather(
@@ -82,11 +87,15 @@ Eigen::VectorXd DeBoorParallelA(const ESMatrix &A, const ESMatrix &B, const Eige
       n * partition_cols,
       MPI_DOUBLE,
       MPI_COMM_WORLD);
+  // We consider the final assembly of C to also be part of the second stage.
+  stopwatch.Record("second_stage");
   return C_full;
 }
 
-
-Eigen::VectorXd DeBoorParallelB(const ESMatrix &A, const ESMatrix &B, const Eigen::VectorXd &u) {
+Eigen::VectorXd DeBoorParallelB(const ESMatrix &A,
+                                const ESMatrix &B,
+                                const Eigen::VectorXd &u,
+                                MPIStopwatch &stopwatch) {
   // TODO(andreib): Don't assume each node knows A!
   // TODO(andreib): Eliminate using statements.
   using namespace Eigen;
@@ -99,20 +108,18 @@ Eigen::VectorXd DeBoorParallelB(const ESMatrix &A, const ESMatrix &B, const Eige
 
   unsigned long n = A.rows();
   unsigned long m = B.rows();
+  int partition_rows = n / n_procs;
   assert(A.rows() == A.cols());
   assert(B.rows() == B.cols());
   if (!IsPowerOfTwo(n) || !IsPowerOfTwo(m)) {
     throw runtime_error(Format("The dimensions of the system being solved in parallel must be powers of two for "
                                "simplicity, but got n = %d and m = %d.", n, m));
   }
+  stopwatch.Record("init");
 
-  int partition_rows = n / n_procs;
-  int partition_cols = m / n_procs;
-
-  // In alternative 2, we assume B, and rhs_matrix are available in each processor, but A to be distributed among the
-  // processors.
-//  SparseLU<SparseMatrix<double>> A_solver; A_solver.compute(A);
+  // In alternative 2, we assume B and u are available in each processor, but A is distributed among the processors.
   SparseLU<SparseMatrix<double>> B_solver; B_solver.compute(B);
+  stopwatch.Record("factorization");
 
   // The first stage of Alternative 2 (here, called "B") is the same as in the first one.
   MatrixXd rhs_matrix(u);
@@ -124,7 +131,10 @@ Eigen::VectorXd DeBoorParallelB(const ESMatrix &A, const ESMatrix &B, const Eige
     VectorXd g_i = rhs_matrix.row(i);
     local_D.row(i - local_start) = B_solver.solve(g_i).transpose();
   }
-  cout << "Done first parallel solver loop." << endl;
+//  cout << "Done first parallel solver loop." << endl;
+  stopwatch.Record("first_stage");
+  // Nothing to do in the transpose stage, since it does not exist.
+  stopwatch.Record("transpose_stage");
 
   // TODO(andreib): SolveParallel implementation of PP2 assumes the full A is on master and splits it up to everyone.
   // You should update the implementation to account for the fact that A is already distributed row-wise in this
@@ -135,6 +145,7 @@ Eigen::VectorXd DeBoorParallelB(const ESMatrix &A, const ESMatrix &B, const Eige
 
   EMatrix distributed_solution_eigen = ToEigen(distributed_solution);
   distributed_solution_eigen.resize(n * m, 1);
+  stopwatch.Record("second_stage");
   return distributed_solution_eigen;
 }
 

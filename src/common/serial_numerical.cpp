@@ -2,8 +2,7 @@
 
 void BandedLUFactorization(BandMatrix<double> &A, bool check_lu) {
   // For debugging
-  // XXX: remove this before benchmarking!
-  Matrix<double> A_orig = A.get_dense();
+//  Matrix<double> A_orig = A.get_dense();
   uint32_t n = A.get_n();
 
   uint32_t l = A.get_bandwidth();
@@ -40,10 +39,10 @@ void BandedLUFactorization(BandMatrix<double> &A, bool check_lu) {
       lower(i, i) = 1.0;
     }
     Matrix<double> upper(n, n, upper_data);
-    bool all_close = A_orig.all_close(lower * upper);
-    if (!all_close) {
-      throw runtime_error("LU-decomposition is incorrect! Get a refund! ;)");
-    }
+//    bool all_close = A_orig.all_close(lower * upper);
+//    if (!all_close) {
+//      throw runtime_error("LU-decomposition is incorrect! Get a refund! ;)");
+//    }
   }
 }
 
@@ -95,7 +94,7 @@ uint32_t Diff(uint32_t a, uint32_t b) {
 Matrix<double> SolveDecomposed(const BandMatrix<double> &A_decomposed, Matrix<double> &B) {
   uint32_t n_systems = B.cols_;
   unsigned int n = A_decomposed.get_n();
-  cout << "Solving " << n_systems << " systems at the same time." << endl;
+//  cout << "Solving " << n_systems << " systems at the same time." << endl;
 
   // Perform forward substitution to find intermediate result z.
   Matrix<double> z(B);

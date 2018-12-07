@@ -1,12 +1,14 @@
 /**
- *  \file spline_2d_problem.cpp
- *  \brief Entry point and problem definitions for solving 2D quadratic spline interpolation.
+ *  @file spline_2d_problem.cpp
+ *  @brief Entry point and problem definitions for solving 2D quadratic spline interpolation.
  */
 
+#include <chrono>
 #include <cmath>
+#include <functional>
 #include <iomanip>
 #include <iostream>
-#include <functional>
+#include <numeric>
 #include <string>
 
 #include <Eigen/SparseCore>
@@ -15,14 +17,21 @@
 #include <unsupported/Eigen/KroneckerProduct>
 
 #include "common/mpi_helpers.h"
+#include "common/mpi_stopwatch.h"
 #include "common/serial_numerical.h"
 #include "common/utils.h"
 #include "a03/deboor_serial.h"
 #include "a03/deboor_parallel.h"
 
-// X <---> N points.
-// Y <---> M points.
+// Notes on indexing in the handout:
+//  X <---> N points.
+//  Y <---> M points.
 // N is the first dimension, M is the second dimension.
+
+// Feedback from second assignment's coding part:
+//  - not much, but just make sure to account for sparsity in regular operations when computing theoretical
+// complexities; one major mistake was you accounted for sparse/triangular matrices when doing e.g.,
+// LU/fwd/back-subst, but NOT when doing matrix-matrix and matrix-vector multiplication, which you should have!
 
 
 DEFINE_string(out_dir, "../results/spline_2d_output", "The directory where to write experiment results (e.g., for "
@@ -32,6 +41,10 @@ DEFINE_string(method, "eigen", "Name of the method used to solve the spline prob
                                "decomposition), parallel-deboor-a (use a parallel double-direction DeBoor "
                                "decomposition), parallel-deboor-b (use a parallel single-direction DeBoor "
                                "decomposition.");
+DEFINE_string(problem_sizes, "30, 62, 126, 254, 510", "A comma-separated list of problem sizes to experiment on.");
+DEFINE_int32(repeat, 1, "The number of times to repeat each solver run, in order to achieve statistical confidence "
+                        "when doing timing estimation.");
+
 
 // TODO(andreib): Stick Eigen stuff in a precompiled header for faster builds!
 // TODO(andreib): Automate LaTeX table generation for an experiment.
@@ -40,10 +53,6 @@ DEFINE_string(method, "eigen", "Name of the method used to solve the spline prob
 // TODO(andreib): Check if the (minor) banding artifacts in solution of problem beta are due to a minor offset bug
 //                in your solution class.
 
-// Feedback from second assignment's coding part:
-//  - not much, but just make sure to account for sparsity in regular operations when computing theoretical
-// complexities; one major mistake was you accounted for sparse/triangular matrices when doing e.g.,
-// LU/fwd/back-subst, but NOT when doing matrix-matrix and matrix-vector multiplication, which you should have!
 
 // TODO(andreib): Group messages together as much as possible.
 // TODO(andreib): Experiment with the second function (beta) in problem 2.
@@ -173,6 +182,69 @@ class Spline2DProblem {
   const double step_size_x_;
   const double step_size_y_;
 };
+
+// TODO(andreib): Make timing classes const while still allowing std::accumulate!
+/// Contains the timing information collected after the run of a solver.
+struct SolverTiming {
+  explicit SolverTiming(const Duration &total_duration) : total_duration_(total_duration) {}
+
+  /// Returns a string representation of the timing info.
+  virtual std::string ToString() {
+    return Format("%.6ld", chrono::microseconds(total_duration_).count());
+  }
+
+  Duration total_duration_;
+};
+
+/// Contains more detailed timing information produced by the parallel DeBoor solvers.
+struct ParallelDeBoorTiming : public SolverTiming {
+  ParallelDeBoorTiming(const Duration &init,
+                       const Duration &factorization,
+                       const Duration &first_stage,
+                       const Duration &transpose_stage,
+                       const Duration &second_stage)
+      : SolverTiming(init + factorization + first_stage + transpose_stage + second_stage),
+        init(init),
+        factorization(factorization),
+        first_stage(first_stage),
+        transpose_stage(transpose_stage),
+        second_stage(second_stage) {}
+
+  virtual std::string ToString() override {
+    return Format("%s,%.6ld,%.6ld,%.6ld,%.6ld,%.6ld",
+        SolverTiming::ToString().c_str(),
+        chrono::microseconds(init),
+        chrono::microseconds(factorization),
+        chrono::microseconds(first_stage),
+        chrono::microseconds(transpose_stage),
+        chrono::microseconds(second_stage)
+    );
+  }
+
+  Duration init;
+  Duration factorization;
+  Duration first_stage;
+  Duration transpose_stage;
+  Duration second_stage;
+};
+
+SolverTiming operator+(const SolverTiming &left, const SolverTiming &right) {
+  return SolverTiming(left.total_duration_ + right.total_duration_);
+}
+
+ParallelDeBoorTiming operator+(const ParallelDeBoorTiming &left, const ParallelDeBoorTiming &right) {
+  return ParallelDeBoorTiming(
+      left.init + right.init,
+      left.factorization + right.factorization,
+      left.first_stage + right.first_stage,
+      left.transpose_stage + right.transpose_stage,
+      left.second_stage + right.second_stage);
+}
+
+SolverTiming Aggregate(const std::vector<SolverTiming> &timings) {
+  return std::accumulate(timings.cbegin(), timings.cend(), SolverTiming(Duration(0)));
+}
+
 
 /// Contains the errors of a particular solution to a spline problem.
 template<typename T>
@@ -365,25 +437,25 @@ Spline2DSolution<double> SolveNaive(const Spline2DProblem &problem) {
   return Spline2DSolution<double>(u, x_square, problem);
 }
 
-Spline2DSolution<double> SolveSerialDeBoor(const Spline2DProblem &problem) {
-  Eigen::MatrixXd deboor_x = DeBoorDecomposition(problem.S, problem.T, problem.Getu());
+Spline2DSolution<double> SolveSerialDeBoor(const Spline2DProblem &problem, MPIStopwatch &stopwatch) {
+  Eigen::MatrixXd deboor_x = DeBoorDecomposition(problem.S, problem.T, problem.Getu(), stopwatch);
   deboor_x.resize(problem.n_ + 2, problem.m_ + 2);
   return Spline2DSolution<double>(problem.Getu(), deboor_x, problem);
 }
 
-Spline2DSolution<double> Solve(const Spline2DProblem &problem, SolverType solver_type) {
+Spline2DSolution<double> Solve(const Spline2DProblem &problem, SolverType solver_type, MPIStopwatch &stopwatch) {
   switch (solver_type) {
     case kNaiveSparseLU:
       return SolveNaive(problem);
     case kSerialDeBoor:
-      return SolveSerialDeBoor(problem);
+      return SolveSerialDeBoor(problem, stopwatch);
     case kParallelDeBoorA: {
-      Eigen::MatrixXd sol = DeBoorParallelA(problem.S, problem.T, problem.Getu());
+      Eigen::MatrixXd sol = DeBoorParallelA(problem.S, problem.T, problem.Getu(), stopwatch);
       sol.resize(problem.n_ + 2, problem.m_ + 2);
       return Spline2DSolution<double>(problem.Getu(), sol, problem);
     }
     case kParallelDeBoorB: {
-      Eigen::MatrixXd sol = DeBoorParallelB(problem.S, problem.T, problem.Getu());
+      Eigen::MatrixXd sol = DeBoorParallelB(problem.S, problem.T, problem.Getu(), stopwatch);
       sol.resize(problem.n_ + 2, problem.m_ + 2);
       return Spline2DSolution<double>(problem.Getu(), sol, problem);
     }
@@ -412,28 +484,106 @@ void CheckSolution(
   }
 }
 
+void CheckWithSerialDeBoor(
+    const std::string &solver_name,
+    const Spline2DProblem &problem,
+    const Spline2DSolution<double> &parallel_solution
+) {
+  MPIStopwatch dummy_stopwatch;
+  Spline2DSolution<double> serial_solution = SolveSerialDeBoor(problem, dummy_stopwatch);
+  Eigen::MatrixXd delta = serial_solution.coefs_ - parallel_solution.coefs_;
+  double delta_norm = delta.norm();
+  const double kDeltaNormEps = 1e-8;
+  if (delta_norm > kDeltaNormEps) {
+    throw runtime_error("Delta between serial and parallel DeBoor coefficients too large!");
+  }
+
+  auto parallel_err = parallel_solution.ComputeErrorsAndValidate();
+  auto serial_err = serial_solution.ComputeErrorsAndValidate();
+
+  const double kErrEps = 1e-8;
+  const double parallel_serial_error = fabs(parallel_err.max_over_dense_points - serial_err.max_over_dense_points);
+  if (parallel_serial_error > kErrEps) {
+    throw runtime_error(Format("Difference between %s solution and serial DeBoor too large (%.10ld)!",
+        solver_name, delta));
+  }
+  else {
+    cout << "Parallel max error within " << setprecision(10) << kErrEps << " of serial DeBoor max error!\n";
+  }
+}
+
 int Spline2DExperiment() {
   MPI_SETUP;
   string solver_name = FLAGS_method;
-  SolverType solver_type = GetSolverType(solver_name);
+  int32_t repeat = FLAGS_repeat;
+  if (repeat < 1) {
+    throw runtime_error("Must set repeat >= 1.");
+  }
 
-  // TODO pass problem sizes as command line arg.
-//  int problem_sizes[] = {30, 62, 126, 254, 510};
-  int problem_sizes[] = {30, 62, 126, 254, 510};
-//  int problem_sizes[] = {254};
-//  int problem_sizes[] = {30}; // For debugging (126+ problems are VERY slow with generic sparse LU).
+  ofstream timing_file(Format("%s/timing-%s-%02d-proc-%02d-rep.csv",
+      FLAGS_out_dir.c_str(),
+      solver_name.c_str(),
+      n_procs,
+      repeat));
+  timing_file << "n,mean_ms,std_ms\n";
+
+  SolverType solver_type = GetSolverType(solver_name);
+  vector<int> problem_sizes = ParseCommaSeparatedInts(FLAGS_problem_sizes);
   for (const int& size : problem_sizes) {
-    for (const auto& problem : {BuildFirstProblem(size, size),
-                                BuildSecondProblem(size, size),
-                                BuildThirdProblem(size, size),
-                                BuildRosenbrock(size, size)}) {
-//    for (const auto& problem : {BuildSecondProblem(size, size)}) {
-      MASTER {
-        cout << "Starting 2D spline interpolation experiment." << endl;
-        cout << "Will be solving problem: " << problem.GetFullName() << endl;
+//    for (const auto& problem : {BuildFirstProblem(size, size),
+//                                BuildSecondProblem(size, size),
+//                                BuildThirdProblem(size, size)}) {
+    for (const auto& problem : {BuildSecondProblem(size, size)}) {
+      MASTER { cout << "Will be solving problem: " << problem.GetFullName() << endl; }
+
+      vector<map<string, Duration>> timings;
+      vector<long> full_timings_us;
+      // Synchronize everything before we start to benchmark. If we don't do this, our timing will be way off since
+      // most nodes will be able to start working right away, EXCEPT the one busy with writing the JSON output of the
+      // last problem.
+      MPI_Barrier(MPI_COMM_WORLD);
+      MPIStopwatch stopwatch; stopwatch.Start();
+      auto smart_solution = Solve(problem, solver_type, stopwatch);
+      stopwatch.Record("end");
+      timings.push_back(stopwatch.GetAllMaxTimesUs());
+      full_timings_us.push_back(stopwatch.GetMaxTotalTimeUs().count());
+
+      for(int32_t rep = 1; rep < repeat; ++rep) {
+        MPIStopwatch sw; sw.Start();
+        auto sol = Solve(problem, solver_type, sw);
+        sw.Record("end");
+        timings.push_back(sw.GetAllMaxTimesUs());
+        full_timings_us.push_back(sw.GetMaxTotalTimeUs().count());
+        // TODO(andreib): Average each category.
+        MASTER {
+          cout << sol.problem_.GetFullName() << ": solved iteration " << rep + 1 << "/" << repeat << ".\n";
+//          if (duration_map.size() > 2) {
+//            cout << ""
+//          }
+        }
       }
-      auto smart_solution = Solve(problem, solver_type);
+
       MASTER {
+        // TODO(andreib): Code for generating LaTeX from this!
+        double sum_ms = 0.0;
+        double sum_sq_ms = 0.0;
+        const int warmup = 1;
+        const int cooldown = 1;
+        for (int i = warmup; i < full_timings_us.size() - cooldown; ++i) {
+          double time_ms = static_cast<double>(full_timings_us[i]) / 1000.0;
+          cout << time_ms << "ms\n";
+          sum_ms += time_ms;
+          sum_sq_ms += time_ms * time_ms;
+        }
+        int count = (full_timings_us.size() - warmup - cooldown);
+        double mean = sum_ms / count;
+        double std = sqrt(sum_sq_ms / count - mean * mean);
+        timing_file << size << "," << mean << "," << std << endl;
+
+        if (IsParallelDeBoor(solver_type)) {
+          CheckWithSerialDeBoor(solver_name, problem, smart_solution);
+        }
+
         Save(smart_solution, FLAGS_out_dir);
         cout << "Solution saved as JSON (but not checked yet).\n";
         if (size < 200) {
@@ -442,7 +592,7 @@ int Spline2DExperiment() {
           cout << "Solver: " << solver_name << " coefficient check vs. reference solution OK. Checking max error.\n";
         }
         else {
-          cout << "Problem too large to check coefficients directly. Using only control point error check.\n";
+          cout << "Problem too large to check with naive LU solver.\n";
         }
         auto errors = smart_solution.ComputeErrorsAndValidate();
         cout << "Maximum error over control points: " << errors.max_over_control_points << "\n";

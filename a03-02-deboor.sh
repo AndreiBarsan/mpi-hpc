@@ -20,7 +20,9 @@ N_NODES=8
 mpirun -np $N_NODES -machinefile config/local-machine.txt       \
     --verbose --display-map --tag-output --timestamp-output     \
     cmake-build-debug/spline_2d_problem                         \
-    --out_dir=$(pwd)/results/spline_2d_output --method parallel-deboor-b
+    --out_dir=$(pwd)/results/spline_2d_output --method parallel-deboor-b \
+    --problem_sizes=30,62,126,254,510,1022 \
+    --repeat 10
 
 
 # TODO(andreib): Try the -xterm option on Linux!

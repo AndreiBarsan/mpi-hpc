@@ -14,7 +14,7 @@ def main():
 
     files = [os.path.join(root, f) for f in os.listdir(root) if 'output-problem' in f]
 
-    # Little hack for debugging XXX
+    # Little hack for debugging
     # files = [f for f in files if '38' in f]
 
     for file in files:

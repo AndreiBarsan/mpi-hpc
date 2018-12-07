@@ -72,6 +72,26 @@ string Format(const string &fmt, ...) {
   return string(formatted.get());
 }
 
+void LTrim(std::string &s) {
+  // Delete everything from the begining up to the first non-space character.
+  s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](int ch) { return !std::isspace(ch); }));
+}
+
+void RTrim(std::string &s) {
+  // Find the last non-space character and delete everything after it.
+  s.erase(std::find_if(s.rbegin(), s.rend(), [](int ch) { return !std::isspace(ch); }).base(), s.end());
+}
+
+void Trim(std::string &s) {
+  LTrim(s);
+  RTrim(s);
+}
+
+std::string Trimmed(std::string s) {
+  Trim(s);
+  return s;
+}
+
 string GetDate() {
   time_t rawtime;
   tm * timeinfo;
@@ -106,7 +126,7 @@ MPI_Datatype MPIType<float>() {
   return MPI_FLOAT;
 }
 
-bool IsPowerOfTwo(unsigned int n) {
+bool IsPowerOfTwo(unsigned long n) {
   return n!= 0 && !((n - 1) & n);
 }
 
@@ -148,5 +168,14 @@ Eigen::MatrixX2d MeshGrid(const Eigen::ArrayXd &x, const Eigen::ArrayXd &y) {
     }
   }
   return result;
+}
+
+std::vector<int> ParseCommaSeparatedInts(const std::string &int_list) {
+  vector<int> ints;
+  vector<string> int_strings = Split(int_list, ',');
+  for(const auto &int_string : int_strings) {
+    ints.push_back(std::stoi(int_string));
+  }
+  return ints;
 }
 

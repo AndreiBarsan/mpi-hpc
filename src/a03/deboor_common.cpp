@@ -3,6 +3,7 @@
 #include <string>
 
 #include "common/utils.h"
+#include "deboor_common.h"
 
 SolverType GetSolverType(const std::string &input) {
   if (input == "eigen") {
@@ -20,4 +21,8 @@ SolverType GetSolverType(const std::string &input) {
   else {
     throw std::runtime_error(Format("Unknown type of solver: []", input.c_str()));
   }
+}
+
+bool IsParallelDeBoor(SolverType solver_type) {
+  return solver_type == SolverType::kParallelDeBoorA || solver_type == SolverType::kParallelDeBoorB;
 }

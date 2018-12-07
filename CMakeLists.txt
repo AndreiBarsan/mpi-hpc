@@ -26,7 +26,7 @@ set(COMMON_SOURCES
         src/common/utils.cpp
         src/common/matrix.cpp
         src/common/parallel_numerical.cpp
-        src/common/serial_numerical.cpp src/common/mpi_helpers.h src/common/mpi_eigen_helpers.cpp)
+        src/common/serial_numerical.cpp src/common/mpi_helpers.h src/common/mpi_eigen_helpers.cpp src/common/mpi_stopwatch.cpp src/common/mpi_stopwatch.h)
 
 # Assignment 1
 add_executable(globsum src/a01/globsum.cpp ${COMMON_SOURCES})
@@ -36,7 +36,7 @@ add_executable(ring src/a01/ring.cpp ${COMMON_SOURCES})
 add_executable(spline_problem ${COMMON_SOURCES} src/a02/spline_problem.cpp)
 # Assignment 3
 add_executable(spline_2d_problem ${COMMON_SOURCES} src/a03/spline_2d_problem.cpp src/a03/deboor_common.cpp)
-add_executable(mpi_eigen_helpers_tests ${COMMON_SOURCES} src/common/mpi_eigen_helpers_tests.cpp)
+add_executable(mpi_eigen_helpers_tests ${COMMON_SOURCES} src/common/mpi_eigen_helpers_test.cpp)
 
 # This fixes some strange CMake errors caused by unusual spaces in these variables.
 string(STRIP "${MPI_CXX_LIBRARIES}" MPI_CXX_LIBRARIES)

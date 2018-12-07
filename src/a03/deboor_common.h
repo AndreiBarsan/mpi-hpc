@@ -17,4 +17,6 @@ enum SolverType {
 
 SolverType GetSolverType(const std::string &input);
 
+bool IsParallelDeBoor(SolverType solver_type);
+
 #endif //HPSC_DEBOOR_COMMON_H

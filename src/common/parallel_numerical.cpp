@@ -129,7 +129,7 @@ Matrix<double> SolveParallel(
     // There is no C_1 block for first proc.
     C_i_1(0, beta - 1) = recv_buffer[0];
   }
-  cout << "[PP2] " << local_id << ": data received; matrix assembly OK." << endl;
+//  cout << "[PP2] " << local_id << ": data received; matrix assembly OK." << endl;
 
   // Step 1: LU factor in-place Ai1 in each processor i.
   BandedLUFactorization(A_i_1, true);
@@ -242,6 +242,7 @@ Matrix<double> SolveParallel(
   old_count = count;
   count = b_i_2_prime.write_raw(send_buffer.get(), count);
   assert(count - old_count == b_i_2_prime.rows_ * n_systems);
+  // Perform an async send because
   MPI_Isend(send_buffer.get(), count, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &send_request);
 
   MASTER {
@@ -327,16 +328,6 @@ Matrix<double> SolveParallel(
   MPI_Recv(recv_buffer.get(), beta * n_systems, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
   Matrix<double> x_i_2(beta, n_systems, Zeros(beta * n_systems));
   x_i_2.set_from(recv_buffer, 0);
-
-//  for(int i = 0; i < x_i_2.rows_; ++i) {
-//    for (int j = 5; j < n_systems; j += 3) {
-//      assert(x_i_2(i, j) == x_i_2(i, j - 3));
-//      assert(x_i_2(i, j - 1) == x_i_2(i, j - 4));
-//      assert(x_i_2(i, j - 2) == x_i_2(i, j - 5));
-//    }
-//  }
-//  MPI_Barrier(MPI_COMM_WORLD);      // XXX delete this
-//  cout << "x_i_2 check OK" << endl;
 
   // Step 10: Compute missing chunks from x (xi1 for all but first proc, and x11 specifically).
   if (local_id < n_procs - 1) {
