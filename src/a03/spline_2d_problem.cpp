@@ -537,6 +537,14 @@ int Spline2DExperiment() {
     for (const auto& problem : {BuildSecondProblem(size, size)}) {
       MASTER { cout << "Will be solving problem: " << problem.GetFullName() << endl; }
 
+      int q = size / n_procs;
+      if (q <= 2 && solver_type == kParallelDeBoorB) {
+        MASTER { cout << "Skipping problem size " << size << " for np = " << n_procs << " because it would result in "
+                      << "a tridiagonal system too small to solve with parallel partitioning method 2, since we would"
+                      << "have q < bandwidth." << endl; };
+        continue;
+      }
+
       vector<map<string, Duration>> timings;
       vector<long> full_timings_us;
       // Synchronize everything before we start to benchmark. If we don't do this, our timing will be way off since

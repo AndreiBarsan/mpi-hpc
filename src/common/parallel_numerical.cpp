@@ -13,7 +13,8 @@
 Matrix<double> SolveParallel(
     const BandMatrix<double> &A,
     const Matrix<double> &b,
-    bool b_is_distributed
+    bool b_is_distributed,
+    bool verbose
 ) {
   MPI_SETUP;
   uint32_t n = A.get_n();
@@ -21,9 +22,9 @@ Matrix<double> SolveParallel(
   uint32_t beta = 2 * A.get_bandwidth() + 1;    // The effective bandwidth of the matrix.
   MPI_Request send_request;                     // Used in asynchronous sends.
   MPI_Status status;
-  if (q <= 2) {
+  if (q < beta) {
     throw runtime_error(Format("Too many processors for such a small system! You end up with a partition size of just"
-                               " %ul (%ul equations, %d processors)", q, n, n_procs));
+                               " %ul < beta = %ul (%ul equations, %d processors)", q, beta, n, n_procs));
   }
   assert(q * n_procs == n);                     // Validate the assumption that n_procs perfectly divides n.
   uint32_t n_systems = b.cols_;
@@ -60,11 +61,19 @@ Matrix<double> SolveParallel(
       }
     }
   }
+  if (verbose) {
+    cout << "Initial sends OK." << endl;
+  }
 
   // Receive our chunk of A, plus the corresponding data from b.
   if (local_id != 0) {
     int expected_count = b_is_distributed ? (q * 3) : (q * 3) + (q * n_systems);
     MPI_Recv(recv_buffer.get(), expected_count, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
+
+    if (verbose) {
+      cout << "Initial recv OK." << endl;
+      cout << expected_count << ", " << 3 * (q - beta) << ", " << buffer_size << endl;
+    }
   }
 
   // We got our data, now let's assemble our matrices. We start with Ai1, which is still a banded tridiagonal matrix
@@ -88,6 +97,9 @@ Matrix<double> SolveParallel(
     A_i_4_data.push_back(recv_buffer.get()[i]);
   }
   assert(A_i_4_data.size() == 9);
+  if (verbose) {
+    cout << "First assembly chunk OK." << endl;
+  }
 
   Matrix<double> B_i_1(beta, q - beta, Zeros(beta * (q - beta)));
   // In the 1D quad spline case, this is always entirely zero!
@@ -120,6 +132,9 @@ Matrix<double> SolveParallel(
     offset = b_i_1.set_from(recv_buffer, offset);
     offset = b_i_2.set_from(recv_buffer, offset);
   }
+  if (verbose) {
+    cout << "Second assembly chunk OK." << endl;
+  }
 
   BandMatrix<double> A_i_1(static_cast<uint32_t>(q - beta), A_i_1_data);
   BandMatrix<double> A_i_4(static_cast<uint32_t>(beta), A_i_4_data);
@@ -129,7 +144,9 @@ Matrix<double> SolveParallel(
     // There is no C_1 block for first proc.
     C_i_1(0, beta - 1) = recv_buffer[0];
   }
-//  cout << "[PP2] " << local_id << ": data received; matrix assembly OK." << endl;
+  if (verbose) {
+    cout << "[PP2] " << local_id << ": data received; matrix assembly OK." << endl;
+  }
 
   // Step 1: LU factor in-place Ai1 in each processor i.
   BandedLUFactorization(A_i_1, true);
