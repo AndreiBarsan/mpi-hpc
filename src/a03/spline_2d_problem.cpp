@@ -564,12 +564,9 @@ int Spline2DExperiment() {
         timings.push_back(sw.GetAllMaxTimesUs());
         full_timings_us.push_back(sw.GetMaxTotalTimeUs().count());
 
-        // TODO(andreib): Average each category.
+        // TODO(andreib): Average each timing category.
         MASTER {
-          cout << sol.problem_.GetFullName() << ": solved iteration " << rep + 1 << "/" << repeat << ".\n";
-//          if (duration_map.size() > 2) {
-//            cout << ""
-//          }
+          // cout << sol.problem_.GetFullName() << ": solved iteration " << rep + 1 << "/" << repeat << ".\n";
         }
       }
 
@@ -597,7 +594,7 @@ int Spline2DExperiment() {
           Save(smart_solution, FLAGS_out_dir);
           cout << "Solution saved as JSON (but not checked yet).\n";
         }
-        if (size < 500) {
+        if (size < 200) {
           cout << "Computing solution using slow method and checking results...\n";
           CheckSolution(solver_name, problem, smart_solution);
           cout << "Solver: " << solver_name << " coefficient check vs. reference solution OK. Checking max error.\n";

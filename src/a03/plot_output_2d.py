@@ -1,4 +1,4 @@
-"""Plots the output produced by spline_problem.cpp."""
+"""Plots the output produced by spline_2d_problem.cpp."""
 import json
 import os
 import sys

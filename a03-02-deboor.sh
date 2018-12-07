@@ -15,9 +15,9 @@ source "build_cmake.sh.inc"
 ################################################################################
 # Run this locally since the problem does not say we must use CDF.
 
-METHODS=(parallel-deboor-a parallel-deboor-b)
+#METHODS=(parallel-deboor-a parallel-deboor-b)
 NODE_COUNTS=(1 2 4 8 16)
-#METHODS=(parallel-deboor-b)
+METHODS=(parallel-deboor-a)
 #NODE_COUNTS=(4)
 
 for METHOD in ${METHODS[@]}; do
@@ -27,9 +27,10 @@ for METHOD in ${METHODS[@]}; do
             --verbose --display-map --tag-output --timestamp-output         \
             cmake-build-debug/spline_2d_problem                             \
             --out_dir=$(pwd)/results/spline_2d_output --method "$METHOD"    \
-            --problem_sizes=30,62,126,254,510,1022                          \
-            --repeat 12 --dump_result=false
+            --problem_sizes=254                                             \
+            --repeat 4 --dump_result=false
 
+#            --problem_sizes=30,62,126,254,510,1022                          \
     done
 done
 
