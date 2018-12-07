@@ -44,6 +44,7 @@ DEFINE_string(method, "eigen", "Name of the method used to solve the spline prob
 DEFINE_string(problem_sizes, "30, 62, 126, 254, 510", "A comma-separated list of problem sizes to experiment on.");
 DEFINE_int32(repeat, 1, "The number of times to repeat each solver run, in order to achieve statistical confidence "
                         "when doing timing estimation.");
+DEFINE_bool(dump_result, true, "Whether to dump the solution ouput for visualization.");
 
 
 // TODO(andreib): Stick Eigen stuff in a precompiled header for faster builds!
@@ -554,6 +555,7 @@ int Spline2DExperiment() {
         sw.Record("end");
         timings.push_back(sw.GetAllMaxTimesUs());
         full_timings_us.push_back(sw.GetMaxTotalTimeUs().count());
+
         // TODO(andreib): Average each category.
         MASTER {
           cout << sol.problem_.GetFullName() << ": solved iteration " << rep + 1 << "/" << repeat << ".\n";
@@ -571,21 +573,22 @@ int Spline2DExperiment() {
         const int cooldown = 1;
         for (int i = warmup; i < full_timings_us.size() - cooldown; ++i) {
           double time_ms = static_cast<double>(full_timings_us[i]) / 1000.0;
-          cout << time_ms << "ms\n";
           sum_ms += time_ms;
           sum_sq_ms += time_ms * time_ms;
         }
         int count = (full_timings_us.size() - warmup - cooldown);
         double mean = sum_ms / count;
         double std = sqrt(sum_sq_ms / count - mean * mean);
+        cout << "Timing: " << mean << "ms, (std = " << std << "ms)" << endl;
         timing_file << size << "," << mean << "," << std << endl;
 
         if (IsParallelDeBoor(solver_type)) {
           CheckWithSerialDeBoor(solver_name, problem, smart_solution);
         }
-
-        Save(smart_solution, FLAGS_out_dir);
-        cout << "Solution saved as JSON (but not checked yet).\n";
+        if (FLAGS_dump_result) {
+          Save(smart_solution, FLAGS_out_dir);
+          cout << "Solution saved as JSON (but not checked yet).\n";
+        }
         if (size < 200) {
           cout << "Computing solution using slow method and checking results...\n";
           CheckSolution(solver_name, problem, smart_solution);

@@ -17,6 +17,7 @@
 /// \param A First component of the Kronecker product, [n x n].
 /// \param B Second component of the Kronecker product, [m x m].
 /// \param u Right-had side column vector, [nm x 1].
+/// \param stopwatch Stopwatch object used to record coarse efficiency information.
 /// \return The [nm x 1] solution vector.
 Eigen::VectorXd DeBoorDecomposition(const ESMatrix &A,
                                     const ESMatrix &B,
@@ -35,14 +36,10 @@ Eigen::VectorXd DeBoorDecomposition(const ESMatrix &A,
   A_solver.compute(A);
   SparseLU<SparseMatrix<double>> B_solver;
   B_solver.compute(B);
-  MASTER {
-    cout << "Deboor partial solvers done." << endl;
-  };
   stopwatch.Record("factorization");
 
   // TODO better name for this n x m matrix which is the resized RHS.
   MatrixXd G(u);
-  cout << "Will reshape g as a matrix: " << n << " x " << m << endl;
   G.resize(n, m);
 
   // This loop can be performed in parallel.
@@ -53,7 +50,7 @@ Eigen::VectorXd DeBoorDecomposition(const ESMatrix &A,
 //    VectorXd g_i = G.block(i, 0, 1, m).transpose();
 //    cout << g_i.rows() << " x " << g_i.cols() << endl;
 // TODO remove profanity
-// WHY THE FUCK DOES THIS WORK WITH AND WITHOUT TRANSPOSE BUT PRODUCE DIFFERENT RESULTS?
+// WHY THE flip DOES THIS WORK both WITH AND WITHOUT TRANSPOSE BUT PRODUCES DIFFERENT RESULTS?
     D.row(i) = B_solver.solve(g_i).transpose();
   }
 //  cout << "Done first serial solver loop." << endl;

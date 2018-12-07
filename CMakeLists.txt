@@ -19,14 +19,20 @@ endif()
 include_directories(SYSTEM ${MPI_INCLUDE_PATH} src)
 
 set(CMAKE_BUILD_TYPE Debug)
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -msse3 -Wall -Wextra -Wno-reorder -std=c++17")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-reorder -std=c++17")
+# Hardcore optimization; note that -Ofast can be even more aggressive. Slow compilation but holy moly is it fast!
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -mtune=native -Wall -Wextra -Wno-reorder -std=c++17")
+# Notmal optimzation
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O1 -march=native -Wall -Wextra -Wno-reorder -std=c++17")
+# No optimization
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -Wall -Wextra -Wno-reorder -std=c++17")
 
 set(COMMON_SOURCES
         src/common/utils.cpp
         src/common/matrix.cpp
         src/common/parallel_numerical.cpp
-        src/common/serial_numerical.cpp src/common/mpi_helpers.h src/common/mpi_eigen_helpers.cpp src/common/mpi_stopwatch.cpp src/common/mpi_stopwatch.h)
+        src/common/serial_numerical.cpp
+        src/common/mpi_eigen_helpers.cpp
+        src/common/mpi_stopwatch.cpp)
 
 # Assignment 1
 add_executable(globsum src/a01/globsum.cpp ${COMMON_SOURCES})

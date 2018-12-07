@@ -24,7 +24,7 @@ class MPIStopwatch {
       throw std::runtime_error(Format("Double-record of label %s!", label.c_str()));
     }
 
-    records_[label] = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_time_);
+    records_[label] = std::chrono::duration_cast<std::chrono::microseconds>(now - last_time_);
     last_time_ = now;
   }
 

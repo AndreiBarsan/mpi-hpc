@@ -24,9 +24,9 @@ Eigen::VectorXd DeBoorParallelA(const ESMatrix &A,
   using namespace Eigen;
   using namespace std;
   MPI_SETUP;
-  if (n_procs <= 1) {
-    throw runtime_error("Please run this with 'mpirun' on at least 2 processors (4 recommended).");
-  }
+//  if (n_procs <= 1) {
+//    throw runtime_error("Please run this with 'mpirun' on at least 2 processors (4 recommended).");
+//  }
   MPI_Barrier(MPI_COMM_WORLD);
 
   long n = A.rows();
@@ -46,9 +46,6 @@ Eigen::VectorXd DeBoorParallelA(const ESMatrix &A,
   A_solver.compute(A);
   SparseLU<SparseMatrix<double>> B_solver;
   B_solver.compute(B);
-  MASTER {
-      cout << "Deboor partial solvers done." << endl;
-  };
   stopwatch.Record("factorization");
 
   // Represents the RHS of the linear system as a matrix, instead of a vector.
@@ -101,9 +98,9 @@ Eigen::VectorXd DeBoorParallelB(const ESMatrix &A,
   using namespace Eigen;
   using namespace std;
   MPI_SETUP;
-  if (n_procs <= 1) {
-    throw runtime_error("Please run this with 'mpirun' on at least 2 processors (4 recommended).");
-  }
+//  if (n_procs <= 1) {
+//    throw runtime_error("Please run this with 'mpirun' on at least 2 processors (4 recommended).");
+//  }
   MPI_Barrier(MPI_COMM_WORLD);
 
   unsigned long n = A.rows();
