@@ -242,21 +242,21 @@ Matrix<double> SolveParallel(
   old_count = count;
   count = b_i_2_prime.write_raw(send_buffer.get(), count);
   assert(count - old_count == b_i_2_prime.rows_ * n_systems);
-  // Perform an async send because
   MPI_Isend(send_buffer.get(), count, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &send_request);
 
   MASTER {
-    // TODO(andreib): Store reduced A as banded matrix, bandwidth = 2 * beta.
+    // TODO(andreib): Store reduced A directly as banded matrix, since it's also tridiagonal anyway.
     Matrix<double> reduced_A(n_procs * beta, n_procs * beta, Zeros(n_procs * beta * n_procs * beta));
     Matrix<double> reduced_b(n_procs * beta, n_systems, Zeros(n_procs * beta * n_systems));
 
     for (int i = 0; i < n_procs; ++i) {
       count = A_i_4_prime.rows_ * A_i_4_prime.cols_ + b_i_2_prime.rows_ * n_systems;
-      count += C_i_2_prime.rows_ * C_i_2_prime.cols_;
-      if (i != 0 && i != n_procs - 1) {
+      if (i > 0) {
         count += C_i_2_prime.rows_ * C_i_2_prime.cols_;
       }
-
+      if (i < n_procs - 1) {
+        count += B_i_2_prime.rows_ * B_i_2_prime.cols_;
+      }
       MPI_Recv(recv_buffer.get(), count, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status);
       uint32_t cur_offset = 0;
       if(i > 0) {
@@ -277,9 +277,7 @@ Matrix<double> SolveParallel(
           if (i > 0) {
             reduced_A(i * beta + j, (i - 1) * beta + k) = C_i_2_prime(j, k);
           }
-
           reduced_A(i * beta + j, i * beta + k) = A_i_4_prime(j, k);
-
           if (i < n_procs - 1) {
             reduced_A(i * beta + j, (i + 1) * beta + k) = B_i_2_prime(j, k);
           }
@@ -293,7 +291,6 @@ Matrix<double> SolveParallel(
     }
 
 //    cout << "PP2 reduced system:\n" << reduced_A << "\n PP2 reduced b:" << reduced_b << endl;
-
     vector<double> band_data;
     band_data.push_back(0.0);
     for(uint32_t j = 0; j < n_procs * beta; ++j) {

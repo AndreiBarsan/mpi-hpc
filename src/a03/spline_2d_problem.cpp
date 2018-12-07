@@ -589,7 +589,7 @@ int Spline2DExperiment() {
           Save(smart_solution, FLAGS_out_dir);
           cout << "Solution saved as JSON (but not checked yet).\n";
         }
-        if (size < 200) {
+        if (size < 500) {
           cout << "Computing solution using slow method and checking results...\n";
           CheckSolution(solver_name, problem, smart_solution);
           cout << "Solver: " << solver_name << " coefficient check vs. reference solution OK. Checking max error.\n";

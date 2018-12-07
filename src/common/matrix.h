@@ -125,7 +125,6 @@ class Matrix {
 /// banded with a wider band, so we do need to implement our matrices to support this.
 template<typename T>
 class BandMatrix {
-
  public:
   BandMatrix(uint32_t n, const std::vector<T> &data, uint32_t bandwidth=1UL)
       : n_(n),
