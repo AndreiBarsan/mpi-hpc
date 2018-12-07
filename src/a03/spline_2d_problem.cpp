@@ -506,7 +506,7 @@ void CheckWithSerialDeBoor(
   const double parallel_serial_error = fabs(parallel_err.max_over_dense_points - serial_err.max_over_dense_points);
   if (parallel_serial_error > kErrEps) {
     throw runtime_error(Format("Difference between %s solution and serial DeBoor too large (%.10ld)!",
-        solver_name, delta));
+        solver_name.c_str(), parallel_serial_error));
   }
   else {
     cout << "Parallel max error within " << setprecision(10) << kErrEps << " of serial DeBoor max error!\n";

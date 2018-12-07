@@ -1,20 +1,20 @@
 cmake_minimum_required(VERSION 3.5)
 project(hpsc)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
 
 # Requires Open MPI (or equivalent) to be installed. On macOS, you can simply use `brew install openmpi` for this.
 find_package(MPI REQUIRED)
 
 # Build gflags anywhere with -DREGISTER_BUILD_DIR=ON and this will work (no need to install).
 find_package(gflags REQUIRED)
-find_package(Eigen3 NO_MODULE)
-if(Eigen3_FOUND)
+find_package(Eigen3 NO_MODULE REQUIRED)
+#if(Eigen3_FOUND)
     message("Eigen3 found: ${Eigen3_VERSION} located here: ${Eigen3_DIR}")
-    add_compile_definitions(DEBUG_WITH_EIGEN)
-else()
-    message("Eigen3 not found. Will not perform error checking.")
-endif()
+#add_compile_definitions(DEBUG_WITH_EIGEN)
+#else()
+#    message("Eigen3 not found. Will not perform error checking.")
+#endif()
 
 include_directories(SYSTEM ${MPI_INCLUDE_PATH} src)
 
