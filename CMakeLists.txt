@@ -23,9 +23,9 @@ set(CMAKE_BUILD_TYPE Debug)
 # Coarsely speaking, I noticed a ~20x speedup on my workstation from no opt flags to hardcore opt! (Xeon E5-2687W v4)
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -mtune=native -Wall -Wextra -Wno-reorder -std=c++17")
 # Normal optimzation
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O1 -march=native -Wall -Wextra -Wno-reorder -std=c++17")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O1 -march=native -Wall -Wextra -Wno-reorder -std=c++14")
 # No optimization
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -Wall -Wextra -Wno-reorder -std=c++17")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -Wall -Wextra -Wno-reorder -std=c++14")
 
 set(COMMON_SOURCES
         src/common/utils.cpp

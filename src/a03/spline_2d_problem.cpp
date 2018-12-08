@@ -22,6 +22,7 @@
 #include "common/utils.h"
 #include "a03/deboor_serial.h"
 #include "a03/deboor_parallel.h"
+#include "a03/sor.h"
 
 // Notes on indexing in the handout:
 //  X <---> N points.
@@ -440,6 +441,7 @@ Spline2DSolution<double> SolveNaive(const Spline2DProblem &problem) {
 }
 
 Spline2DSolution<double> SolveSerialDeBoor(const Spline2DProblem &problem, MPIStopwatch &stopwatch) {
+  // TODO(andreib): Returning by value and also resizing is VERY slow. Fix that.
   Eigen::MatrixXd deboor_x = DeBoorDecomposition(problem.S, problem.T, problem.u, stopwatch);
   deboor_x.resize(problem.n_ + 2, problem.m_ + 2);
   return Spline2DSolution<double>(problem.u, deboor_x, problem);
@@ -460,6 +462,11 @@ Spline2DSolution<double> Solve(const Spline2DProblem &problem, SolverType solver
     }
     case kParallelDeBoorB: {
       auto sol = DeBoorParallelB(problem.S, problem.T, problem.u, stopwatch);
+      stopwatch.Record("end");
+      return Spline2DSolution<double>(problem.u, *sol, problem);
+    }
+    case kSerialSOR: {
+      auto sol = SOR(problem.GetA(), problem.u, problem.n_ + 2, problem.m_ + 2);
       stopwatch.Record("end");
       return Spline2DSolution<double>(problem.u, *sol, problem);
     }

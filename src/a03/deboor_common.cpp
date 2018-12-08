@@ -18,6 +18,9 @@ SolverType GetSolverType(const std::string &input) {
   else if (input == "parallel-deboor-b") {
     return SolverType::kParallelDeBoorB;
   }
+  else if (input == "sor-natural") {
+    return SolverType::kSerialSOR;
+  }
   else {
     throw std::runtime_error(Format("Unknown type of solver: []", input.c_str()));
   }
