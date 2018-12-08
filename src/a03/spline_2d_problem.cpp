@@ -108,6 +108,17 @@ ESMatrix GetCoefMatrix(uint32_t sz) {
   return T * (1.0 / 8.0);
 }
 
+/// Returns the right-hand side vector used to solve the spline problem.
+Eigen::VectorXd Getu(const Scalar2DFunction &fun, const Eigen::MatrixX2d &xy_control) {
+  Eigen::VectorXd result(xy_control.rows(), 1);
+  for(uint32_t i = 0; i < xy_control.rows(); ++i) {
+    result(i) = fun(xy_control(i, 0), xy_control(i, 1));
+  }
+  assert(xy_control.rows() == result.rows());
+  return result;
+}
+
+
 /// Represents a 2D quadratic spline interpolation problem.
 class Spline2DProblem {
 
@@ -128,7 +139,7 @@ class Spline2DProblem {
                   double a_x, double a_y, double b_x, double b_y)
       : name_(name), n_(n), m_(m), function_(function), a_x_(a_x), a_y_(a_y), b_x_(b_x),
         b_y_(b_y), step_size_x_((b_x - a_x) / n), step_size_y_((b_y - a_y) / m),
-        S(GetCoefMatrix(n)), T(GetCoefMatrix(m)) {}
+        S(GetCoefMatrix(n)), T(GetCoefMatrix(m)), u(Getu(function, GetControlPoints())) {}
 
   /// Returns the coefficient matrix used to solve the spline problem.
   ESMatrix GetA() const {
@@ -151,17 +162,6 @@ class Spline2DProblem {
     return xy_coord;
   }
 
-  /// Returns the right-hand side vector used to solve the spline problem.
-  Eigen::VectorXd Getu() const {
-    Eigen::MatrixX2d xy_control = GetControlPoints();
-    Eigen::VectorXd result(xy_control.rows(), 1);
-    for(uint32_t i = 0; i < xy_control.rows(); ++i) {
-      result(i) = function_(xy_control(i, 0), xy_control(i, 1));
-    }
-    assert(xy_control.rows() == result.rows());
-    return result;
-  }
-
   string GetFullName() const {
     return Format("problem-%s-%04d", name_.c_str(), n_);
   }
@@ -179,6 +179,7 @@ class Spline2DProblem {
 
   const ESMatrix S;
   const ESMatrix T;
+  const Eigen::VectorXd u;
 
   const double step_size_x_;
   const double step_size_y_;
@@ -419,7 +420,7 @@ void Save(const Spline2DSolution<double> &solution, const string &out_dir) {
 /// Useful for checking the correctness of more sophisticated solvers but much slower than DeBoor.
 Spline2DSolution<double> SolveNaive(const Spline2DProblem &problem) {
   ESMatrix A = problem.GetA();
-  Eigen::VectorXd u = problem.Getu();
+  Eigen::VectorXd u = problem.u;
 
   // Note that we ALWAYS compute the solution using the generic Eigen solver so that we can verify our answers.
   Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
@@ -439,9 +440,9 @@ Spline2DSolution<double> SolveNaive(const Spline2DProblem &problem) {
 }
 
 Spline2DSolution<double> SolveSerialDeBoor(const Spline2DProblem &problem, MPIStopwatch &stopwatch) {
-  Eigen::MatrixXd deboor_x = DeBoorDecomposition(problem.S, problem.T, problem.Getu(), stopwatch);
+  Eigen::MatrixXd deboor_x = DeBoorDecomposition(problem.S, problem.T, problem.u, stopwatch);
   deboor_x.resize(problem.n_ + 2, problem.m_ + 2);
-  return Spline2DSolution<double>(problem.Getu(), deboor_x, problem);
+  return Spline2DSolution<double>(problem.u, deboor_x, problem);
 }
 
 Spline2DSolution<double> Solve(const Spline2DProblem &problem, SolverType solver_type, MPIStopwatch &stopwatch) {
@@ -451,14 +452,16 @@ Spline2DSolution<double> Solve(const Spline2DProblem &problem, SolverType solver
     case kSerialDeBoor:
       return SolveSerialDeBoor(problem, stopwatch);
     case kParallelDeBoorA: {
-      Eigen::MatrixXd sol = DeBoorParallelA(problem.S, problem.T, problem.Getu(), stopwatch);
-      sol.resize(problem.n_ + 2, problem.m_ + 2);
-      return Spline2DSolution<double>(problem.Getu(), sol, problem);
+      auto sol = DeBoorParallelA(problem.S, problem.T, problem.u, stopwatch);
+      // XXX: ensure this makes sense---the thing we want to avoid is timing lots of expensive copies which we can
+      //      trivially eliminate in the future.
+      stopwatch.Record("end");
+      return Spline2DSolution<double>(problem.u, *sol, problem);
     }
     case kParallelDeBoorB: {
-      Eigen::MatrixXd sol = DeBoorParallelB(problem.S, problem.T, problem.Getu(), stopwatch);
-      sol.resize(problem.n_ + 2, problem.m_ + 2);
-      return Spline2DSolution<double>(problem.Getu(), sol, problem);
+      auto sol = DeBoorParallelB(problem.S, problem.T, problem.u, stopwatch);
+      stopwatch.Record("end");
+      return Spline2DSolution<double>(problem.u, *sol, problem);
     }
     default:
       throw runtime_error(Format("Unknown solver type requested: %d", solver_type));
@@ -526,7 +529,7 @@ int Spline2DExperiment() {
       solver_name.c_str(),
       n_procs,
       repeat));
-  timing_file << "n,mean_ms,std_ms\n";
+  bool wrote_header = false;
 
   SolverType solver_type = GetSolverType(solver_name);
   vector<int> problem_sizes = ParseCommaSeparatedInts(FLAGS_problem_sizes);
@@ -553,14 +556,30 @@ int Spline2DExperiment() {
       MPI_Barrier(MPI_COMM_WORLD);
       MPIStopwatch stopwatch; stopwatch.Start();
       auto smart_solution = Solve(problem, solver_type, stopwatch);
-      stopwatch.Record("end");
+//      stopwatch.Record("end");
       timings.push_back(stopwatch.GetAllMaxTimesUs());
       full_timings_us.push_back(stopwatch.GetMaxTotalTimeUs().count());
+
+      if (!wrote_header) {
+        timing_file << "n,mean_ms,std_ms,";
+        if (timings[0].size() > 2) {
+          // Very hacky way of writing detailed timing results.
+          int ii = 0;
+          for(const auto &entry : timings[0]) {
+            timing_file << entry.first;
+//            if (ii++ < timings.size() - 1) {
+              timing_file << ",";
+//            }
+          }
+        }
+        timing_file << "\n";
+        wrote_header = true;
+      }
 
       for(int32_t rep = 1; rep < repeat; ++rep) {
         MPIStopwatch sw; sw.Start();
         auto sol = Solve(problem, solver_type, sw);
-        sw.Record("end");
+//        sw.Record("end");
         timings.push_back(sw.GetAllMaxTimesUs());
         full_timings_us.push_back(sw.GetMaxTotalTimeUs().count());
 
@@ -576,17 +595,40 @@ int Spline2DExperiment() {
         double sum_sq_ms = 0.0;
         const int warmup = 1;
         const int cooldown = 1;
+        map<string, double> sum_map_ms;
+        map<string, double> sum_map_std;
+        map<string, double> sum_map_sq_ms;
         for (int i = warmup; i < full_timings_us.size() - cooldown; ++i) {
           double time_ms = static_cast<double>(full_timings_us[i]) / 1000.0;
           sum_ms += time_ms;
           sum_sq_ms += time_ms * time_ms;
+
+          auto &t = timings[i];
+          for(const auto& p : t) {
+            time_ms = static_cast<double>(p.second.count()) / 1000.0;
+            sum_map_ms[p.first] += time_ms;
+            sum_map_sq_ms[p.first] += time_ms * time_ms;
+          }
         }
         int count = (full_timings_us.size() - warmup - cooldown);
+        for(const auto& p : sum_map_ms) {
+          sum_map_ms[p.first] /= count;
+          double mean = sum_map_ms[p.first];
+          sum_map_std[p.first] = sqrt(sum_map_sq_ms[p.first] / count - mean * mean);
+        }
         double mean = sum_ms / count;
         double std = sqrt(sum_sq_ms / count - mean * mean);
         cout << "Timing: " << mean << "ms, (std = " << std << "ms)" << endl;
-        timing_file << size << "," << mean << "," << std << endl;
-
+        timing_file << size << "," << mean << "," << std << ",";
+        if (timings[0].size() > 2) {
+          for(const auto& p : sum_map_ms) {
+            int idx = 0;
+            timing_file << p.second << ",";
+            cout << p.first << ": " << p.second << "ms, std = "
+                 << sum_map_std[p.first] << "ms" << endl;
+          }
+        }
+        timing_file << endl;
         if (IsParallelDeBoor(solver_type)) {
           CheckWithSerialDeBoor(solver_name, problem, smart_solution);
         }

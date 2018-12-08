@@ -39,10 +39,13 @@ class MPIStopwatch {
 
   Duration GetMaxTotalTimeUs() const {
     long time_us = 0.0;
+    using namespace std;
     for (const auto& p : records_) {
+//      cout << p.first << ": " << p.second.count() / 1000 << "ms" << endl;
       time_us += std::chrono::microseconds(p.second).count();
     }
     long max_time_us = -1L;
+//    cout << "GetMaxTotalTimeUs: " << time_us / 1000 << "ms" << endl;
     MPI_Allreduce(&time_us, &max_time_us, 1, MPI_LONG, MPI_MAX, MPI_COMM_WORLD);
     assert (max_time_us >= 0);
     return Duration(std::chrono::microseconds(max_time_us));

@@ -1,15 +1,18 @@
 #include "matrix.h"
 
-EMatrix ToEigen(const Matrix<double> &mat) {
-  EMatrix res;
-  res.resize(mat.rows_, mat.cols_);
-
+void ToEigen(const Matrix<double> &mat, EMatrix &out) {
+  out.resize(mat.rows_, mat.cols_);
   for (uint32_t i = 0; i < mat.rows_; ++i) {
     for (uint32_t j = 0; j < mat.cols_; ++j) {
-      res(i, j) = mat(i, j);
+      out(i, j) = mat(i, j);
     }
   }
-  return res;
+}
+
+EMatrix ToEigen(const Matrix<double> &mat) {
+  EMatrix out;
+  ToEigen(mat, out);
+  return out;
 }
 
 Matrix<double> ToMatrix(const EMatrix &eigen) {

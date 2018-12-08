@@ -22,10 +22,10 @@ set(CMAKE_BUILD_TYPE Debug)
 # Hardcore optimization; note that -Ofast can be even more aggressive. Slow compilation but holy moly is it fast!
 # Coarsely speaking, I noticed a ~20x speedup on my workstation from no opt flags to hardcore opt! (Xeon E5-2687W v4)
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -mtune=native -Wall -Wextra -Wno-reorder -std=c++17")
-# Notmal optimzation
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O1 -march=native -Wall -Wextra -Wno-reorder -std=c++17")
+# Normal optimzation
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O1 -march=native -Wall -Wextra -Wno-reorder -std=c++17")
 # No optimization
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -Wall -Wextra -Wno-reorder -std=c++17")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -Wall -Wextra -Wno-reorder -std=c++17")
 
 set(COMMON_SOURCES
         src/common/utils.cpp

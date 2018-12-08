@@ -213,15 +213,7 @@ class BandMatrix {
   }
 };
 
-//bool all_close(const std::vector<double> &left, const std::vector<double> &right) {
-//  double epsilon = 1e-6;
-//  for(uint32_t i = 0; i < left.size(); ++i) {
-//    if (fabs(left[i] - right[i]) > epsilon) {
-//      return false;
-//    }
-//  }
-//  return true;
-//}
+void ToEigen(const Matrix<double> &mat, EMatrix &out);
 
 EMatrix ToEigen(const Matrix<double> &mat);
 

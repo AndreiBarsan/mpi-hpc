@@ -7,6 +7,7 @@
 #define HPSC_DEBOOR_PARALLEL_H
 
 #include <iostream>
+#include <memory>
 
 #include <Eigen/Core>
 #include <Eigen/Sparse>
@@ -17,18 +18,13 @@
 #include "common/parallel_numerical.h"
 #include "common/utils.h"
 
-Eigen::VectorXd DeBoorParallelA(const ESMatrix &A,
-                                const ESMatrix &B,
-                                const Eigen::VectorXd &u,
-                                MPIStopwatch &stopwatch) {
+std::shared_ptr<Eigen::MatrixXd> DeBoorParallelA(const ESMatrix &A,
+                                                 const ESMatrix &B,
+                                                 const Eigen::VectorXd &u,
+                                                 MPIStopwatch &stopwatch) {
   using namespace Eigen;
   using namespace std;
   MPI_SETUP;
-//  if (n_procs <= 1) {
-//    throw runtime_error("Please run this with 'mpirun' on at least 2 processors (4 recommended).");
-//  }
-  MPI_Barrier(MPI_COMM_WORLD);
-
   long n = A.rows();
   long m = B.rows();
   assert(A.rows() == A.cols());
@@ -75,12 +71,12 @@ Eigen::VectorXd DeBoorParallelA(const ESMatrix &A,
   }
 //  cout << "Done second parallel solver loop." << endl;
 
-  VectorXd C_full = VectorXd::Zero(n * m);
+  auto C_full = make_shared<Eigen::MatrixXd>(MatrixXd::Zero(n, m));
   MPI_Allgather(
       C.data(),
       n * partition_cols,
       MPI_DOUBLE,
-      C_full.data(),
+      C_full->data(),
       n * partition_cols,
       MPI_DOUBLE,
       MPI_COMM_WORLD);
@@ -89,20 +85,15 @@ Eigen::VectorXd DeBoorParallelA(const ESMatrix &A,
   return C_full;
 }
 
-Eigen::VectorXd DeBoorParallelB(const ESMatrix &A,
-                                const ESMatrix &B,
-                                const Eigen::VectorXd &u,
-                                MPIStopwatch &stopwatch) {
+std::shared_ptr<Eigen::MatrixXd> DeBoorParallelB(const ESMatrix &A,
+                                                 const ESMatrix &B,
+                                                 const Eigen::VectorXd &u,
+                                                 MPIStopwatch &stopwatch) {
   // TODO(andreib): Don't assume each node knows A!
   // TODO(andreib): Eliminate using statements.
   using namespace Eigen;
   using namespace std;
   MPI_SETUP;
-//  if (n_procs <= 1) {
-//    throw runtime_error("Please run this with 'mpirun' on at least 2 processors (4 recommended).");
-//  }
-  MPI_Barrier(MPI_COMM_WORLD);
-
   unsigned long n = A.rows();
   unsigned long m = B.rows();
   int partition_rows = n / n_procs;
@@ -140,10 +131,10 @@ Eigen::VectorXd DeBoorParallelB(const ESMatrix &A,
   ::Matrix<double> local_D_custom = ToMatrix(local_D);
   ::Matrix<double> distributed_solution = ::SolveParallel(A_custom, local_D_custom, true);
 
-  EMatrix distributed_solution_eigen = ToEigen(distributed_solution);
-  distributed_solution_eigen.resize(n * m, 1);
+  auto out = make_shared<EMatrix>(n, m);
+  ToEigen(distributed_solution, *out);
   stopwatch.Record("second_stage");
-  return distributed_solution_eigen;
+  return out;
 }
 
 
