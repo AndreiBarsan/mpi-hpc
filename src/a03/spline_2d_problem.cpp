@@ -586,7 +586,6 @@ int Spline2DExperiment() {
       for(int32_t rep = 1; rep < repeat; ++rep) {
         MPIStopwatch sw; sw.Start();
         auto sol = Solve(problem, solver_type, sw);
-//        sw.Record("end");
         timings.push_back(sw.GetAllMaxTimesUs());
         full_timings_us.push_back(sw.GetMaxTotalTimeUs().count());
 

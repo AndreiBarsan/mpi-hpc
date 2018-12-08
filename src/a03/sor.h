@@ -28,9 +28,6 @@ std::shared_ptr<Eigen::MatrixXd> SOR(const ESMatrix &A, const Eigen::VectorXd &b
   ESMatrix L(A.triangularView<StrictlyLower>());
   ESMatrix U(A.triangularView<StrictlyUpper>());
   ESMatrix D(A.diagonal().asDiagonal());   // Extract diagonal as vector, and then turn
-  // it into a matrix.
-//  cout << D.rows() << ", " << D.cols() << endl;
-//  cout << D.asDiagonal().rows() << ", " << D.asDiagonal().cols() << endl;
 
   VectorXd q0 = (L + D / w) * (*x);
   VectorXd q1 = b - (U + (w - 1) / w * D) * (*x);
@@ -45,9 +42,12 @@ std::shared_ptr<Eigen::MatrixXd> SOR(const ESMatrix &A, const Eigen::VectorXd &b
       break;
     }
 
+    // TODO(andreib): Compute this procedurally, without knowing A / L / U / D explicitly.
     ESMatrix M = (L + D / w);
     *x = M.triangularView<Lower>().solve(q1);
     q0 = q1;
+
+    // TODO(andreib): Compute this procedurally, without knowing A / L / U / D explicitly.
     q1 = b - (U + (w - 1) / w * D) * (*x);
     r = q1 - q0;
     err_norm = r.norm();

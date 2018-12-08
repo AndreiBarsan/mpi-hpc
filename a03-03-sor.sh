@@ -22,7 +22,7 @@ for METHOD in ${METHODS[@]}; do
             cmake-build-debug/spline_2d_problem                             \
             --problem_sizes=30,62,126,254,510,1022                          \
             --out_dir=$(pwd)/results/spline_2d_output --method "$METHOD"    \
-            --repeat 1 --dump_result=false
+            --repeat 12 --dump_result=false
 
 #           --problem_sizes=254                                              \
 done
