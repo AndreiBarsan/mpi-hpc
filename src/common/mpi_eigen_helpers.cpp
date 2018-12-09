@@ -37,7 +37,6 @@ void BroadcastEigenSparse(ESMatrix &A, int sender) {
   total_element_count = i_buffer[2];
 
   if (local_id != sender) {
-//    cout << local_id << ": reeize to " << n_rows << ", " << n_cols << "." << endl;
     A.resize(n_rows, n_cols);
     A.reserve(total_element_count);
   }

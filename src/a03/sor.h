@@ -13,16 +13,13 @@
 #include "common/mpi_eigen_helpers.h"
 #include "common/utils.h"
 
+using ESVector = Eigen::SparseVector<double>;
 
-//Eigen::MatrixXd GetARowUpper(int i, int n, int m) {
-ESMatrix GetARowUpper(int i, int n, int m) {
+
+void GetARowUpper(int i, int n, int m, ESVector &rv) {
   // Procedurally generates a row from A.
   using namespace Eigen;
-
-//  return MatrixXd::Zero(n * m, 1);
-//  VectorXd rv = VectorXd::Zero(n * m);
-//  MatrixXd rv = MatrixXd::Zero(1, n * m);
-  ESMatrix rv(1, n * m);
+  rv.setZero();
 
   int row = i / m;
   int col = i % m;
@@ -34,17 +31,17 @@ ESMatrix GetARowUpper(int i, int n, int m) {
   if (col != 0 && col != m - 1) {
     factor *= 6.0;
   }
-  rv.insert(0, i) = factor;
+  rv.coeffRef(i) = factor;
   if (col != m - 1) {
-    rv.insert(0, i + 1) = 1;
+    rv.coeffRef(i + 1) = 1;
     if (row != 0 && row != n - 1) {
-      rv.insert(0, i + 1) = 6.0;
+      rv.coeffRef(i + 1) = 6.0;
     }
   }
 
   if (col != 0) {
     if (i + m - 2 + 1 < n * m) {
-      rv.insert(0, i + m - 2 + 1) = 1;
+      rv.coeffRef(i + m - 2 + 1) = 1;
     }
   }
   if (i + m + 2 - 2 < n * m) {
@@ -52,28 +49,19 @@ ESMatrix GetARowUpper(int i, int n, int m) {
     if (col != 0 && col != m - 1) {
       fac = 6.0;
     }
-    rv.insert(0, i + m + 2 - 2) = fac;
+    rv.coeffRef(i + m + 2 - 2) = fac;
   }
   if(col != m - 1) {
     if ( i + m + 3 - 2 < n * m) {
-      rv.insert(0, i + m + 3 - 2) = 1.0;
+      rv.coeffRef(i + m + 3 - 2) = 1.0;
     }
   }
-
-//  cout << "Returning row: " << i << endl;
-//  cout << rv << endl;
-  return rv;
 }
 
 
 Eigen::SparseVector<double> GetARowLower(int i, int n, int m) {
   // Procedurally generates a lower half of a row from A.
   using namespace Eigen;
-
-//  return MatrixXd::Zero(n * m, 1);
-//  VectorXd rv = VectorXd::Zero(n * m);
-//  MatrixXd rv = MatrixXd::Zero(1, n * m);
-//  ESMatrix rv(1, n * m);
   Eigen::SparseVector<double> rv(n * m);
 
   int row = i / m;
@@ -121,27 +109,22 @@ Eigen::SparseVector<double> GetARowLower(int i, int n, int m) {
 
 
 void Computeq1(
-    const ESMatrix &A,          // only for debugging
+    const std::vector<int> &row_indices,
+    const ESMatrix &_,          // used to A, and only for debugging, now unused
     const Eigen::VectorXd &b,
                int n,
                int m,
                double w,
-               std::shared_ptr<Eigen::MatrixXd> x,
+               const std::shared_ptr<Eigen::VectorXd> &x,
                Eigen::VectorXd &q1
 ) {
-//  EMatrix A_built = EMatrix::Zero(A.rows(), A.cols());
-//  ESMatrix U(A.triangularView<Eigen::StrictlyUpper>());
-
-  // TODO avoid copy
-  Eigen::VectorXd xv(*x);
-
-  for (int i = 0; i < n * m; ++i) {       // loop over equation index to support coloring in future
+  Eigen::SparseVector<double> a_row(n * m);
+  for(int i : row_indices) {
     int row = i / m;
     int col = i % m;
-    ESMatrix a_row = GetARowUpper(i, n, m);
-    a_row.coeffRef(0, i) = a_row.coeff(0, i) * (w - 1) / w;
-
-    double val_hacky = xv.dot(Eigen::VectorXd(a_row.transpose()));
+    GetARowUpper(i, n, m, a_row);
+    a_row.coeffRef(i) = a_row.coeff(i) * (w - 1) / w;
+    double val = a_row.dot((*x));
 
 //      Eigen::MatrixXd res = (a_row * (*x));
 //      cout << res.rows() << ", " << res.cols() << endl;
@@ -150,18 +133,20 @@ void Computeq1(
 
 //      cout << val << ", " << val_hacky << endl;
 
-    q1(i) = b(i) - val_hacky;
+    q1(i) = b(i) - val;
+//    q1(i) = b(i) - val;
   }
 }
 
 
 /// Solves (L + D/w) * x = q1 for x, writing the result into x.
 void ForwardSubst(
+    const std::vector<int> &row_indices,
     const ESMatrix &_,    // ONLY for debugging
     int n,
     int m,
     double w,
-    std::shared_ptr<Eigen::MatrixXd> x,
+    std::shared_ptr<Eigen::VectorXd> x,
     const Eigen::VectorXd &q1
 )
 {
@@ -169,19 +154,19 @@ void ForwardSubst(
 //  EMatrix A_built = EMatrix::Zero(A.rows(), A.cols());
   // TODO(andreib): Allow user to specify a coloring-based order, instead of just 1 .. n * m.
 
-  for (int i = 0; i < n * m; ++i) {
+//  for (int i = 0; i < n * m; ++i) {
+  for (int i : row_indices) {
     int row = i / m;
     int col = i % m;
     SparseVector<double> a_row = GetARowLower(i, n, m);
     double diag = a_row.coeff(i);
-//    a_row.coeffRef(i) = 0;
 
     double sum = 0.0;
     for (SparseVector<double>::InnerIterator it(a_row); it; ++it) {
-      sum += it.value() * (*x)(it.row(), 0);
+      sum += it.value() * (*x)(it.row());
     }
     // Undo the last thing in loop; we have this outside the loop to avoid branching in the loop.
-    sum = sum - diag * (*x)(i, 0);
+    sum = sum - diag * (*x)(i);
 
 //    double sum_slow = 0.0;
 //    for(int j = 0; j < i; ++j) {
@@ -207,7 +192,7 @@ void ForwardSubst(
 }
 
 
-std::shared_ptr<Eigen::MatrixXd> SOR(const ESMatrix &Ao, const Eigen::VectorXd &bo, int n, int m) {
+std::shared_ptr<EMatrix> SOR(const ESMatrix &Ao, const Eigen::VectorXd &bo, int n, int m) {
   using namespace Eigen;
   using namespace std;
 
@@ -218,8 +203,9 @@ std::shared_ptr<Eigen::MatrixXd> SOR(const ESMatrix &Ao, const Eigen::VectorXd &
   const int kMaxIt = 100;
   // TODO pass as parameter
   const double w = 0.8;
-  const bool reorder = true;
+  const bool reorder = false;
 
+  vector<int> order;
   if (reorder) {
     cout << "REORDERING equations using 4-color coloring." << endl;
     // TODO simply iterate through q1 computation and forward subst using the coloring-based ordering.
@@ -250,6 +236,9 @@ std::shared_ptr<Eigen::MatrixXd> SOR(const ESMatrix &Ao, const Eigen::VectorXd &
   }
   else {
     cout << "NOT reordering equations using coloring." << endl;
+    for(int i = 0; i < n * m; ++i) {
+      order.push_back(i);
+    }
   }
 
   if (A.rows() < 100) {
@@ -260,7 +249,7 @@ std::shared_ptr<Eigen::MatrixXd> SOR(const ESMatrix &Ao, const Eigen::VectorXd &
   // Note: the natural ordering is what we've been doing so far in the previous cases.
   // Note: we need FOUR-COLOR coloring, not red-black. Two colors are not enough. And since we have >2 colors, we need
   // to decide which choice of color assignment to use. We should use the third one.
-  auto x = make_shared<MatrixXd>(MatrixXd::Zero(n * m, 1));
+  auto x = make_shared<VectorXd>(VectorXd::Zero(n * m));
 
   ESMatrix L(A.triangularView<StrictlyLower>());
   ESMatrix U(A.triangularView<StrictlyUpper>());
@@ -272,7 +261,7 @@ std::shared_ptr<Eigen::MatrixXd> SOR(const ESMatrix &Ao, const Eigen::VectorXd &
 //  VectorXd q1 = b - (U + (w - 1) / w * D) * (*x);
 
   VectorXd q1 = VectorXd::Zero(b.rows());
-  Computeq1(A, b, n, m, w, x, q1);
+  Computeq1(order, A, b, n, m, w, x, q1);
 
   VectorXd r = q1 - q0;
 
@@ -280,24 +269,25 @@ std::shared_ptr<Eigen::MatrixXd> SOR(const ESMatrix &Ao, const Eigen::VectorXd &
   double err_norm_0 = r.norm();
   double err_norm = r.norm();
   int iteration = 0;
+  assert(order.size() == n * m);
   for(; iteration < kMaxIt; ++iteration) {
     if (err_norm < kErrNormEps * err_norm_0) {
       iteration--;
       break;
     }
 
-    ESMatrix M = (L + D / w);
-    // TOOD(andreib): Implement this manually. Once you have the manual implementation,
-    // with a for loop over the equations, changing the ordering is a piece of cake.
+//    ESMatrix M = (L + D / w);
 //    *x = M.triangularView<Lower>().solve(q1);
 
-    ForwardSubst(A, n, m, w, x, q1);
+    ForwardSubst(order, A, n, m, w, x, q1);
+    cout << "FWD done" << endl;
 
     q0 = q1;
     // "Cheating" way
     //  q1 = b - (U + (w - 1) / w * D) * (*x);
     // Proper way, where 'A" is only passed for debugging.
-    Computeq1(A, b, n, m, w, x, q1);
+    Computeq1(order, A, b, n, m, w, x, q1);
+    cout << "q1 done" << endl;
 
     r = q1 - q0;
     err_norm = r.norm();
@@ -308,8 +298,9 @@ std::shared_ptr<Eigen::MatrixXd> SOR(const ESMatrix &Ao, const Eigen::VectorXd &
 
   cout << "[SOR] Done in " << iteration << " its." << endl;
 
-  x->resize(n, m);
-  return x;
+  auto x_mat = make_shared<EMatrix>(*x);
+  x_mat->resize(n, m);
+  return x_mat;
 }
 
 
