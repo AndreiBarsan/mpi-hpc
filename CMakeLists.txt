@@ -9,12 +9,8 @@ find_package(MPI REQUIRED)
 # Build gflags anywhere with -DREGISTER_BUILD_DIR=ON and this will work (no need to install).
 find_package(gflags REQUIRED)
 find_package(Eigen3 NO_MODULE REQUIRED)
-#if(Eigen3_FOUND)
-    message("Eigen3 found: ${Eigen3_VERSION} located here: ${Eigen3_DIR}")
-#add_compile_definitions(DEBUG_WITH_EIGEN)
-#else()
-#    message("Eigen3 not found. Will not perform error checking.")
-#endif()
+message("Eigen3 found: ${Eigen3_VERSION} located here: ${Eigen3_DIR}")
+add_compile_definitions(DEBUG_WITH_EIGEN)
 
 include_directories(SYSTEM ${MPI_INCLUDE_PATH} src)
 

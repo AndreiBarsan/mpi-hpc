@@ -14,12 +14,15 @@
 #include "common/utils.h"
 
 
-Eigen::VectorXd GetARow(int i, int n, int m) {
+//Eigen::MatrixXd GetARowUpper(int i, int n, int m) {
+ESMatrix GetARowUpper(int i, int n, int m) {
   // Procedurally generates a row from A.
   using namespace Eigen;
 
 //  return MatrixXd::Zero(n * m, 1);
-  VectorXd rv = VectorXd::Zero(n * m);
+//  VectorXd rv = VectorXd::Zero(n * m);
+//  MatrixXd rv = MatrixXd::Zero(1, n * m);
+  ESMatrix rv(1, n * m);
 
   int row = i / m;
   int col = i % m;
@@ -31,17 +34,17 @@ Eigen::VectorXd GetARow(int i, int n, int m) {
   if (col != 0 && col != m - 1) {
     factor *= 6.0;
   }
-  rv(i) = factor;
+  rv.insert(0, i) = factor;
   if (col != m - 1) {
-    rv(i + 1) = 1;
+    rv.insert(0, i + 1) = 1;
     if (row != 0 && row != n - 1) {
-      rv(i + 1) = 6.0;
+      rv.insert(0, i + 1) = 6.0;
     }
   }
 
   if (col != 0) {
     if (i + m - 2 + 1 < n * m) {
-      rv(i + m - 2 + 1) = 1;
+      rv.insert(0, i + m - 2 + 1) = 1;
     }
   }
   if (i + m + 2 - 2 < n * m) {
@@ -49,11 +52,64 @@ Eigen::VectorXd GetARow(int i, int n, int m) {
     if (col != 0 && col != m - 1) {
       fac = 6.0;
     }
-    rv(i + m + 2 - 2) = fac;
+    rv.insert(0, i + m + 2 - 2) = fac;
   }
   if(col != m - 1) {
     if ( i + m + 3 - 2 < n * m) {
-      rv(i + m + 3 - 2) = 1.0;
+      rv.insert(0, i + m + 3 - 2) = 1.0;
+    }
+  }
+
+//  cout << "Returning row: " << i << endl;
+//  cout << rv << endl;
+  return rv;
+}
+
+
+ESMatrix GetARowLower(int i, int n, int m) {
+  // Procedurally generates a lower half of a row from A.
+  using namespace Eigen;
+
+//  return MatrixXd::Zero(n * m, 1);
+//  VectorXd rv = VectorXd::Zero(n * m);
+//  MatrixXd rv = MatrixXd::Zero(1, n * m);
+  ESMatrix rv(1, n * m);
+
+  int row = i / m;
+  int col = i % m;
+
+  double factor = 1.0;
+  if (row != 0 && row != n - 1) {
+    factor *= 6.0;
+  }
+  if (col != 0 && col != m - 1) {
+    factor *= 6.0;
+  }
+  rv.insert(0, i) = factor;
+  if (col != 0) {
+    if (row != 0 && row != n - 1) {
+      rv.insert(0, i - 1) = 6.0;
+    }
+    else {
+      rv.insert(0, i - 1) = 1;
+    }
+  }
+
+  if (col != 0) {
+    if ( i - m - 3 + 2 >= 0) {
+      rv.insert(0, i - m - 3 + 2) = 1.0;
+    }
+  }
+  if (i - m - 2 + 2 >= 0) {
+    double fac = 1.0;
+    if (col != 0 && col != m - 1) {
+      fac = 6.0;
+    }
+    rv.insert(0, i - m - 2 + 2) = fac;
+  }
+  if(col != m - 1) {
+    if (i - m + 2 - 1 >= 0) {
+      rv.insert(0, i - m + 2 - 1) = 1;
     }
   }
 
@@ -72,24 +128,180 @@ void Computeq1(
                std::shared_ptr<Eigen::MatrixXd> x,
                Eigen::VectorXd &q1
 ) {
-  EMatrix A_built = EMatrix::Zero(A.rows(), A.cols());
-  ESMatrix U(A.triangularView<Eigen::StrictlyUpper>());
+//  EMatrix A_built = EMatrix::Zero(A.rows(), A.cols());
+//  ESMatrix U(A.triangularView<Eigen::StrictlyUpper>());
+
+  // TODO avoid copy
+  Eigen::VectorXd xv(*x);
 
   for (int i = 0; i < n * m; ++i) {       // loop over equation index to support coloring in future
     int row = i / m;
     int col = i % m;
-    {
-      Eigen::VectorXd xv(*x);
-      Eigen::VectorXd a_row = GetARow(i, n, m);
-      A_built.row(i) = a_row;
-      a_row(i) *= (w - 1) / w;
-      double val = xv.dot(a_row);
+    ESMatrix a_row = GetARowUpper(i, n, m);
+    a_row.coeffRef(0, i) = a_row.coeff(0, i) * (w - 1) / w;
+
+    double val_hacky = xv.dot(Eigen::VectorXd(a_row.transpose()));
+
+//      Eigen::MatrixXd res = (a_row * (*x));
 //      cout << res.rows() << ", " << res.cols() << endl;
 //      assert(res.rows() == 1 && res.cols() == 1);
 //      double val = res(0, 0);
-      q1(i) = b(i) - val;
+
+//      cout << val << ", " << val_hacky << endl;
+
+    q1(i) = b(i) - val_hacky;
+  }
+}
+
+
+/// Solves (L + D/w) * x = q1 for x, writing the result into x.
+void ForwardSubst(
+    const ESMatrix &A,    // ONLY for debugging
+    int n,
+    int m,
+    double w,
+    std::shared_ptr<Eigen::MatrixXd> x,
+    const Eigen::VectorXd &q1
+)
+{
+  EMatrix A_built = EMatrix::Zero(A.rows(), A.cols());
+  // TODO(andreib): Allow user to specify a coloring-based order, instead of just 1 .. n * m.
+  for (int i = 0; i < n * m; ++i) {
+    int row = i / m;
+    int col = i % m;
+    ESMatrix a_row = GetARowLower(i, n, m);
+    double diag = a_row.coeff(0, i);
+//    a_row.coeffRef(0, i) = 0.0;
+
+    // TODO(andreib): Hardcode EXACLTY the nonzero indices ONLY.
+    double sum = 0.0;
+    for(int j = 0; j < i; ++j) {
+      sum += a_row.coeff(0, j) * (*x)(j, 0);
     }
-    continue;
+    cout << sum << endl;
+
+
+
+    A_built.row(i) = a_row;
+  }
+
+  // TODO(andreib): Remove this code.
+  if (A.rows() < 50) {
+    cout << "Demo A rebuilt:" << endl;
+    cout << A_built << endl;
+  }
+}
+
+
+std::shared_ptr<Eigen::MatrixXd> SOR(const ESMatrix &Ao, const Eigen::VectorXd &bo, int n, int m) {
+  using namespace Eigen;
+  using namespace std;
+
+  // Hacky copies
+  Eigen::VectorXd b(bo);
+  ESMatrix A(Ao);
+
+  const int kMaxIt = 100;
+  // TODO pass as parameter
+  const double w = 0.8;
+  const bool reorder = true;
+
+  if (reorder) {
+    cout << "REORDERING equations using 4-color coloring." << endl;
+    // TODO simply iterate through q1 computation and forward subst using the coloring-based ordering.
+    //
+    //  R B R     <=> i even
+    //  G Y G     <=> i odd
+    //  R B R     <=> i even
+    //  ...etc.
+    for (int i = 0; i < n; ++i) {
+      for (int j = 0; j < m; ++j) {
+        int idx = i * m + j;
+
+        if (i % 2 == 0 && j % 2 == 0) {
+          // RED
+        }
+        else if(i % 2 == 0 && j % 2 == 1) {
+          // BLUE
+        }
+        else if (i % 2 == 1 && j % 2 == 0) {
+          // GREEN
+        }
+        else {
+          // YELLOW
+        }
+      }
+
+    }
+  }
+  else {
+    cout << "NOT reordering equations using coloring." << endl;
+  }
+
+  if (A.rows() < 100) {
+    cout << A << endl;
+  }
+
+
+  // Note: the natural ordering is what we've been doing so far in the previous cases.
+  // Note: we need FOUR-COLOR coloring, not red-black. Two colors are not enough. And since we have >2 colors, we need
+  // to decide which choice of color assignment to use. We should use the third one.
+  auto x = make_shared<MatrixXd>(MatrixXd::Zero(n * m, 1));
+
+  ESMatrix L(A.triangularView<StrictlyLower>());
+  ESMatrix U(A.triangularView<StrictlyUpper>());
+  ESMatrix D(A.diagonal().asDiagonal());   // Extract diagonal as vector, and then turn
+
+  // Note we just use A at the beginning (trivial to remove, but I chose to focus on optimizing the main loop, since
+  // that's by far where the algorithms spends most of its time).
+  VectorXd q0 = (L + D / w) * (*x);
+//  VectorXd q1 = b - (U + (w - 1) / w * D) * (*x);
+
+  VectorXd q1 = VectorXd::Zero(b.rows());
+  Computeq1(A, b, n, m, w, x, q1);
+
+  VectorXd r = q1 - q0;
+
+  double kErrNormEps = 1e-12;
+  double err_norm_0 = r.norm();
+  double err_norm = r.norm();
+  int iteration = 0;
+  for(; iteration < kMaxIt; ++iteration) {
+    if (err_norm < kErrNormEps * err_norm_0) {
+      iteration--;
+      break;
+    }
+
+    ESMatrix M = (L + D / w);
+    // TOOD(andreib): Implement this manually. Once you have the manual implementation,
+    // with a for loop over the equations, changing the ordering is a piece of cake.
+    *x = M.triangularView<Lower>().solve(q1);
+
+    ForwardSubst(A, n, m, w, x, q1);
+
+    q0 = q1;
+    // "Cheating" way
+    //  q1 = b - (U + (w - 1) / w * D) * (*x);
+    // Proper way, where 'A" is only passed for debugging.
+    Computeq1(A, b, n, m, w, x, q1);
+
+    r = q1 - q0;
+    err_norm = r.norm();
+    if (iteration && iteration % 10 == 0) {
+      cout << "[SOR] Iteration " << iteration << " complete. error = " << err_norm << endl;
+    }
+  }
+
+  cout << "[SOR] Done in " << iteration << " its." << endl;
+
+  x->resize(n, m);
+  return x;
+}
+
+
+/*
+ *
+ * Code graveyard.
 
     double factor = 1.0;
     if (row != 0 && row != n - 1) {
@@ -216,149 +428,10 @@ void Computeq1(
     q1(i) = b(i) - val;
   }
 
-  if (A_built.rows() < 100) {
-    cout << "The row-wise built A:" << endl;
-    cout << A_built << endl;
-  }
-}
-
-
-std::shared_ptr<Eigen::MatrixXd> SOR(const ESMatrix &Ao, const Eigen::VectorXd &bo, int n, int m) {
-  using namespace Eigen;
-  using namespace std;
-
-  // Hacky copies
-  Eigen::VectorXd b(bo);
-  ESMatrix A(Ao);
-
-  const int kMaxIt = 100;
-  // TODO pass as parameter
-  const double w = 0.8;
-  const bool reorder = true;
-
-  if (reorder) {
-    cout << "REORDERING equations using 4-color coloring." << endl;
-    // TODO permute A and b using a permutation matrix P.
-    //
-    //  R B R     <=> i even
-    //  G Y G     <=> i odd
-    //  R B R     <=> i even
-    //  ...etc.
-    for (int i = 0; i < n; ++i) {
-      for (int j = 0; j < m; ++j) {
-        int idx = i * m + j;
-
-        if (i % 2 == 0 && j % 2 == 0) {
-          // RED
-        }
-        else if(i % 2 == 0 && j % 2 == 1) {
-          // BLUE
-        }
-        else if (i % 2 == 1 && j % 2 == 0) {
-          // GREEN
-        }
-        else {
-          // YELLOW
-        }
-      }
-
-    }
-  }
-  else {
-    cout << "NOT reordering equations using coloring." << endl;
-  }
-
-  if (A.rows() < 100) {
-    cout << A << endl;
-  }
-
-
-  // Note: the natural ordering is what we've been doing so far in the previous cases.
-  // Note: we need FOUR-COLOR coloring, not red-black. Two colors are not enough. And since we have >2 colors, we need
-  // to decide which choice of color assignment to use. We should use the third one.
-  auto x = make_shared<MatrixXd>(MatrixXd::Zero(n * m, 1));
-
-  ESMatrix L(A.triangularView<StrictlyLower>());
-  ESMatrix U(A.triangularView<StrictlyUpper>());
-  ESMatrix D(A.diagonal().asDiagonal());   // Extract diagonal as vector, and then turn
-
-  VectorXd q0 = (L + D / w) * (*x);
-//  VectorXd q1 = b - (U + (w - 1) / w * D) * (*x);
-
-  VectorXd q1 = VectorXd::Zero(b.rows());
-  Computeq1(A, b, n, m, w, x, q1);
-
-  VectorXd r = q1 - q0;
-
-  double kErrNormEps = 1e-12;
-  double err_norm_0 = r.norm();
-  double err_norm = r.norm();
-  int iteration = 0;
-  for(; iteration < kMaxIt; ++iteration) {
-    if (err_norm < kErrNormEps * err_norm_0) {
-      iteration--;
-      break;
-    }
-
-    ESMatrix M = (L + D / w);
-    // TOOD(andreib): Implement this manually. Once you have the manual implementation,
-    // with a for loop over the equations, changing the ordering is a piece of cake.
-    *x = M.triangularView<Lower>().solve(q1);
-    q0 = q1;
-
-    // "Cheating" way
-//    q1 = b - (U + (w - 1) / w * D) * (*x);
-  Computeq1(A, b, n, m, w, x, q1);
-
-    r = q1 - q0;
-    err_norm = r.norm();
-    if (iteration && iteration % 10 == 0) {
-      cout << "[SOR] Iteration " << iteration << " complete. error = " << err_norm << endl;
-    }
-  }
-
-  cout << "[SOR] Done in " << iteration << " its." << endl;
-
-  x->resize(n, m);
-  return x;
-}
-
-/* Manual computation code.
- *
-    // I do not understand why we have to do this. Storing A itself can be done efficiently enough to allow all of
-    // these insane for loops to be replaced by one line of code, whose performance WILL be faster than the manual
-    // loops thanks to Eigen's auto-vectorization capabilities.
-//    q1(0) = ...
-    for (int i = 1; i < m - 1; ++i) {
-      q1(i) = b(i) - (( (w - 1) / w * 6 * (*x)(i) + (*x)(i + 1) + (*x)(i + m + 1) ))
-    }
-//    q1(m - 1) = ...
-    for (int i = 0; i < n; ++i) {
-      for(int j = 0; j < m; ++j) {
-        int idx = i * m + j;
-
-        double val = 0.0;
-
-        // First block, 6 1 ... 1 6 1, unless it's first or last row in first block
-        if (i == 0) {
-          if (j == 0 || j == m -1) {
-            val += (w - 1) / w * 1 * (*x)
-          }
-
-
-        }
-
-        q1(idx) = val;
-      }
-
- //*/
-
-/**
-//    for (int i = m; i < (n - 1) * m; ++i) {
-//      // 1 6 1 ... 6 36 6 ... 1 6 1   => but we care only about the U, so
-//      //             36 6 ... 1 6 1
-//      q1(i) = b(i) - ((w - 1) / w * 36 * (*x)(i) + 6 * (*x)(i + 1) + (*x)(i + m + 1) + 6 * (*x)(i + m + 2) + (*x)(i + m + 3) );
-//    }
+//  if (A_built.rows() < 100) {
+//    cout << "The row-wise built A:" << endl;
+//    cout << A_built << endl;
+//  }
  */
 
 #endif //HPSC_SOR_H
