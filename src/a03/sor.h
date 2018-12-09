@@ -66,14 +66,15 @@ ESMatrix GetARowUpper(int i, int n, int m) {
 }
 
 
-ESMatrix GetARowLower(int i, int n, int m) {
+Eigen::SparseVector<double> GetARowLower(int i, int n, int m) {
   // Procedurally generates a lower half of a row from A.
   using namespace Eigen;
 
 //  return MatrixXd::Zero(n * m, 1);
 //  VectorXd rv = VectorXd::Zero(n * m);
 //  MatrixXd rv = MatrixXd::Zero(1, n * m);
-  ESMatrix rv(1, n * m);
+//  ESMatrix rv(1, n * m);
+  Eigen::SparseVector<double> rv(n * m);
 
   int row = i / m;
   int col = i % m;
@@ -85,19 +86,19 @@ ESMatrix GetARowLower(int i, int n, int m) {
   if (col != 0 && col != m - 1) {
     factor *= 6.0;
   }
-  rv.insert(0, i) = factor;
+  rv.insert(i) = factor;
   if (col != 0) {
     if (row != 0 && row != n - 1) {
-      rv.insert(0, i - 1) = 6.0;
+      rv.insert(i - 1) = 6.0;
     }
     else {
-      rv.insert(0, i - 1) = 1;
+      rv.insert(i - 1) = 1;
     }
   }
 
   if (col != 0) {
     if ( i - m - 3 + 2 >= 0) {
-      rv.insert(0, i - m - 3 + 2) = 1.0;
+      rv.insert(i - m - 3 + 2) = 1.0;
     }
   }
   if (i - m - 2 + 2 >= 0) {
@@ -105,11 +106,11 @@ ESMatrix GetARowLower(int i, int n, int m) {
     if (col != 0 && col != m - 1) {
       fac = 6.0;
     }
-    rv.insert(0, i - m - 2 + 2) = fac;
+    rv.insert(i - m - 2 + 2) = fac;
   }
   if(col != m - 1) {
     if (i - m + 2 - 1 >= 0) {
-      rv.insert(0, i - m + 2 - 1) = 1;
+      rv.insert(i - m + 2 - 1) = 1;
     }
   }
 
@@ -156,7 +157,7 @@ void Computeq1(
 
 /// Solves (L + D/w) * x = q1 for x, writing the result into x.
 void ForwardSubst(
-    const ESMatrix &A,    // ONLY for debugging
+    const ESMatrix &_,    // ONLY for debugging
     int n,
     int m,
     double w,
@@ -164,32 +165,45 @@ void ForwardSubst(
     const Eigen::VectorXd &q1
 )
 {
-  EMatrix A_built = EMatrix::Zero(A.rows(), A.cols());
+  using namespace Eigen;
+//  EMatrix A_built = EMatrix::Zero(A.rows(), A.cols());
   // TODO(andreib): Allow user to specify a coloring-based order, instead of just 1 .. n * m.
+
   for (int i = 0; i < n * m; ++i) {
     int row = i / m;
     int col = i % m;
-    ESMatrix a_row = GetARowLower(i, n, m);
-    double diag = a_row.coeff(0, i);
-//    a_row.coeffRef(0, i) = 0.0;
+    SparseVector<double> a_row = GetARowLower(i, n, m);
+    double diag = a_row.coeff(i);
+//    a_row.coeffRef(i) = 0;
 
-    // TODO(andreib): Hardcode EXACLTY the nonzero indices ONLY.
     double sum = 0.0;
-    for(int j = 0; j < i; ++j) {
-      sum += a_row.coeff(0, j) * (*x)(j, 0);
+    for (SparseVector<double>::InnerIterator it(a_row); it; ++it) {
+      sum += it.value() * (*x)(it.row(), 0);
     }
-    cout << sum << endl;
+    // Undo the last thing in loop; we have this outside the loop to avoid branching in the loop.
+    sum = sum - diag * (*x)(i, 0);
 
+//    double sum_slow = 0.0;
+//    for(int j = 0; j < i; ++j) {
+//      sum_slow += a_row.coeffRef(j) * (*x)(j, 0);
+//    }
+//    if (fabs(sum - sum_slow) > 1e-3) {
+//      cout << sum << "  " << sum_slow << endl;
+//      cout << diag << " " << diag * (*x)(i, 0);
+//    }
 
+    double solution = (q1(i) - sum) / diag * w;
+//    double solution = (q1(i) - sum_slow) / diag * w;
+    (*x)(i) = solution;
 
-    A_built.row(i) = a_row;
+//    A_built.row(i) = a_row;
   }
 
   // TODO(andreib): Remove this code.
-  if (A.rows() < 50) {
-    cout << "Demo A rebuilt:" << endl;
-    cout << A_built << endl;
-  }
+//  if (A.rows() < 50) {
+//    cout << "Demo A rebuilt:" << endl;
+//    cout << A_built << endl;
+//  }
 }
 
 
@@ -275,7 +289,7 @@ std::shared_ptr<Eigen::MatrixXd> SOR(const ESMatrix &Ao, const Eigen::VectorXd &
     ESMatrix M = (L + D / w);
     // TOOD(andreib): Implement this manually. Once you have the manual implementation,
     // with a for loop over the equations, changing the ordering is a piece of cake.
-    *x = M.triangularView<Lower>().solve(q1);
+//    *x = M.triangularView<Lower>().solve(q1);
 
     ForwardSubst(A, n, m, w, x, q1);
 

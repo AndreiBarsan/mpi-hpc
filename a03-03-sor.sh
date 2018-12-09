@@ -20,7 +20,7 @@ for METHOD in ${METHODS[@]}; do
         mpirun -np 1 -machinefile config/local-machine.txt      \
             --timestamp-output         \
             cmake-build-debug/spline_2d_problem                             \
-            --problem_sizes=2                              \
+            --problem_sizes=32                              \
             --out_dir=$(pwd)/results/spline_2d_output --method "$METHOD"    \
             --repeat 5 --dump_result=true
 
