@@ -144,7 +144,10 @@ class Spline2DProblem {
 
   /// Returns the coefficient matrix used to solve the spline problem.
   ESMatrix GetA() const {
-    return Eigen::kroneckerProduct(S, T);
+    ESMatrix A = Eigen::kroneckerProduct(S, T);
+
+    return A;
+
   }
 
 //  ESMatrix GetS() const {
@@ -466,7 +469,36 @@ Spline2DSolution<double> Solve(const Spline2DProblem &problem, SolverType solver
       return Spline2DSolution<double>(problem.u, *sol, problem);
     }
     case kSerialSOR: {
-      auto sol = SOR(problem.GetA(), problem.u, problem.n_ + 2, problem.m_ + 2);
+      ESMatrix A = problem.GetA();
+      EMatrix u = problem.u;
+
+      bool scale = true;
+      int n = problem.n_ + 2;
+      int m = problem.m_ + 2;
+
+      if (scale) {
+
+        for (int row = 0; row < n; ++row) {
+          for (int col = 0; col < m; ++col) {
+            double factor = 4;
+            if (row != 0 && row != n - 1) {
+              factor *= 4;
+            }
+            if (col != 0 && col != m - 1) {
+              factor *= 4;
+            }
+
+            int i = row * m + col;
+            u(i) = u(i) * factor;
+
+            // Temporary solution until I get rid of A completely in the code.
+            A.row(i) *= factor;
+//      cout << factor << endl;
+          }
+        }
+      }
+
+      auto sol = SOR(A, u, problem.n_ + 2, problem.m_ + 2);
       stopwatch.Record("end");
       return Spline2DSolution<double>(problem.u, *sol, problem);
     }
@@ -642,7 +674,7 @@ int Spline2DExperiment() {
           Save(smart_solution, FLAGS_out_dir);
           cout << "Solution saved as JSON (but not checked yet).\n";
         }
-        if (size < 200) {
+        if (size < 200 && solver_type != SolverType::kSerialSOR) {
           cout << "Computing solution using slow method and checking results...\n";
           CheckSolution(solver_name, problem, smart_solution);
           cout << "Solver: " << solver_name << " coefficient check vs. reference solution OK. Checking max error.\n";

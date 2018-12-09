@@ -1,5 +1,7 @@
 
+import math
 import numpy as np
+
 
 
 def build_S(rows, cols):
@@ -93,31 +95,39 @@ def build_perm_4color(rows, cols):
             i = row * cols + col
             if row % 4 == 0:
                 if col % 2 == 0:
-                    red_idx.append((i, ri))
+                    # red_idx.append((i, ri))
+                    red_idx.append(i)
                     ri = ri + 1
                 else:
-                    green_idx.append((i, gi))
+                    # green_idx.append((i, gi))
+                    green_idx.append(i)
                     gi += 1
             elif row % 3 == 1:
                 if col % 2 == 0:
-                    yellow_idx.append((i, yi))
+                    # yellow_idx.append((i, yi))
+                    yellow_idx.append(i)
                     yi += 1
                 else:
-                    black_idx.append((i, bi))
+                    # black_idx.append((i, bi))
+                    black_idx.append(i)
                     bi = bi + 1
             elif row % 3 == 2:
                 if col % 2 == 0:
-                    green_idx.append((i, gi))
+                    # green_idx.append((i, gi))
+                    green_idx.append(i)
                     gi += 1
                 else:
-                    red_idx.append((i, ri))
+                    # red_idx.append((i, ri))
+                    red_idx.append(i)
                     ri = ri + 1
             else:
                 if col % 2 == 0:
-                    black_idx.append((i, bi))
+                    # black_idx.append((i, bi))
+                    black_idx.append(i)
                     bi = bi + 1
                 else:
-                    yellow_idx.append((i, yi))
+                    # yellow_idx.append((i, yi))
+                    yellow_idx.append(i)
                     yi += 1
             # if row % 2 == 0 and col % 2 == 0: # RED
             #     red_idx.append((i, ri))
@@ -139,22 +149,35 @@ def build_perm_4color(rows, cols):
     # green_idx[:, 1] += red_idx.shape[0] + black_idx.shape[0]
     # yellow_idx[:, 1] += green_idx.shape[0] + red_idx.shape[0] + black_idx.shape[0]
 
+    # print(red_idx.shape)
+    # print(red_idx.shape[0])
+    # black_idx += red_idx.shape[0]
+    # green_idx += red_idx.shape[0] + black_idx.shape[0]
+    # yellow_idx += green_idx.shape[0] + red_idx.shape[0] + black_idx.shape[0]
+
     print("Red count: {}".format(len(red_idx)))
     print("Black count: {}".format(len(black_idx)))
     print("Green count: {}".format(len(green_idx)))
     print("Yellow count: {}".format(len(yellow_idx)))
-    idx = np.vstack((red_idx, black_idx, green_idx, yellow_idx))
-    # print(idx)
+    # idx = np.vstack((red_idx, black_idx, green_idx, yellow_idx))
+    idx = np.hstack((red_idx, black_idx, green_idx, yellow_idx))
+    print(idx)
     # P = np.zeros((rows * cols, rows * cols))
     # for row in idx:
     #     P[row[1], row[0]] = 1
 
     # The indices in the first column describe a permutation; we can pass this to Eigen!
     P_id = np.eye(rows * cols)
-    P_id = P_id[idx[:, 0]]
+    # P_id = P_id[idx[:, 0]]
+    P_id = P_id[idx]
     # assert np.allclose(P_id, P)
 
     return P_id
+
+
+def mkrhs():
+    fun = lambda x, y: math.sin(x) * math.exp(y)
+
 
 
 
