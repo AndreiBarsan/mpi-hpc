@@ -139,6 +139,34 @@ void Computeq1(
 }
 
 
+void Computeq0(
+    const std::vector<int> &row_indices,
+    int n,
+    int m,
+    double w,
+    const std::shared_ptr<Eigen::VectorXd> &x,
+    Eigen::VectorXd &q0
+) {
+//  Eigen::SparseVector<double> a_row(n * m);
+  for(int i : row_indices) {
+    int row = i / m;
+    int col = i % m;
+    Eigen::SparseVector<double> a_row = GetARowLower(i, n, m);
+    a_row.coeffRef(i) = a_row.coeff(i) / w;
+    double val = a_row.dot((*x));
+
+//      Eigen::MatrixXd res = (a_row * (*x));
+//      cout << res.rows() << ", " << res.cols() << endl;
+//      assert(res.rows() == 1 && res.cols() == 1);
+//      double val = res(0, 0);
+
+//      cout << val << ", " << val_hacky << endl;
+
+    q0(i) = val;
+  }
+}
+
+
 /// Solves (L + D/w) * x = q1 for x, writing the result into x.
 void ForwardSubst(
     const std::vector<int> &row_indices,
@@ -192,20 +220,22 @@ void ForwardSubst(
 }
 
 
-std::shared_ptr<EMatrix> SOR(const ESMatrix &Ao, const Eigen::VectorXd &bo, int n, int m) {
+std::shared_ptr<EMatrix> SOR(const ESMatrix &_, const Eigen::VectorXd &b, int n, int m) {
   using namespace Eigen;
   using namespace std;
 
   // Hacky copies
-  Eigen::VectorXd b(bo);
-  ESMatrix A(Ao);
+//  Eigen::VectorXd b(bo);
+//  ESMatrix A(Ao);
 
   const int kMaxIt = 100;
   // TODO pass as parameter
   const double w = 0.8;
   const bool reorder = false;
 
+  cout << "Starting to compute equation ordering..." << endl;
   vector<int> order;
+  order.reserve(n * m);
   if (reorder) {
     cout << "REORDERING equations using 4-color coloring." << endl;
     // TODO simply iterate through q1 computation and forward subst using the coloring-based ordering.
@@ -241,9 +271,10 @@ std::shared_ptr<EMatrix> SOR(const ESMatrix &Ao, const Eigen::VectorXd &bo, int 
     }
   }
 
-  if (A.rows() < 100) {
-    cout << A << endl;
-  }
+//  if (A.rows() < 100) {
+//    cout << A << endl;
+//  }
+  cout << "Computed equation ordering." << endl;
 
 
   // Note: the natural ordering is what we've been doing so far in the previous cases.
@@ -251,24 +282,27 @@ std::shared_ptr<EMatrix> SOR(const ESMatrix &Ao, const Eigen::VectorXd &bo, int 
   // to decide which choice of color assignment to use. We should use the third one.
   auto x = make_shared<VectorXd>(VectorXd::Zero(n * m));
 
-  ESMatrix L(A.triangularView<StrictlyLower>());
-  ESMatrix U(A.triangularView<StrictlyUpper>());
-  ESMatrix D(A.diagonal().asDiagonal());   // Extract diagonal as vector, and then turn
+//  ESMatrix L(A.triangularView<StrictlyLower>());
+//  ESMatrix U(A.triangularView<StrictlyUpper>());
+//  ESMatrix D(A.diagonal().asDiagonal());   // Extract diagonal as vector, and then turn
 
   // Note we just use A at the beginning (trivial to remove, but I chose to focus on optimizing the main loop, since
   // that's by far where the algorithms spends most of its time).
-  VectorXd q0 = (L + D / w) * (*x);
+//  VectorXd q0 = (L + D / w) * (*x);
+  VectorXd q0(VectorXd::Zero(b.rows()));
+  Computeq0(order, n, m, w, x, q0);
 //  VectorXd q1 = b - (U + (w - 1) / w * D) * (*x);
 
   VectorXd q1 = VectorXd::Zero(b.rows());
-  Computeq1(order, A, b, n, m, w, x, q1);
-
+  Computeq1(order, _, b, n, m, w, x, q1);
   VectorXd r = q1 - q0;
 
   double kErrNormEps = 1e-12;
   double err_norm_0 = r.norm();
   double err_norm = r.norm();
   int iteration = 0;
+
+  cout << "Initialized computation equation ordering." << endl;
   assert(order.size() == n * m);
   for(; iteration < kMaxIt; ++iteration) {
     if (err_norm < kErrNormEps * err_norm_0) {
@@ -276,18 +310,10 @@ std::shared_ptr<EMatrix> SOR(const ESMatrix &Ao, const Eigen::VectorXd &bo, int 
       break;
     }
 
-//    ESMatrix M = (L + D / w);
-//    *x = M.triangularView<Lower>().solve(q1);
-
-    ForwardSubst(order, A, n, m, w, x, q1);
-    cout << "FWD done" << endl;
-
+    // Note that I only pass A to these equations for historic reasons (debugging). A is NEVER actually used.
+    ForwardSubst(order, _, n, m, w, x, q1);
     q0 = q1;
-    // "Cheating" way
-    //  q1 = b - (U + (w - 1) / w * D) * (*x);
-    // Proper way, where 'A" is only passed for debugging.
-    Computeq1(order, A, b, n, m, w, x, q1);
-    cout << "q1 done" << endl;
+    Computeq1(order, _, b, n, m, w, x, q1);
 
     r = q1 - q0;
     err_norm = r.norm();
@@ -295,7 +321,6 @@ std::shared_ptr<EMatrix> SOR(const ESMatrix &Ao, const Eigen::VectorXd &bo, int 
       cout << "[SOR] Iteration " << iteration << " complete. error = " << err_norm << endl;
     }
   }
-
   cout << "[SOR] Done in " << iteration << " its." << endl;
 
   auto x_mat = make_shared<EMatrix>(*x);
@@ -307,6 +332,17 @@ std::shared_ptr<EMatrix> SOR(const ESMatrix &Ao, const Eigen::VectorXd &bo, int 
 /*
  *
  * Code graveyard.
+ */
+/*
+ * Generic SOR loop
+ *
+    ESMatrix M = (L + D / w);
+    *x = M.triangularView<Lower>().solve(q1);
+    q1 = b - (U + (w - 1) / w * D) * (*x);
+ */
+
+
+/*
 
     double factor = 1.0;
     if (row != 0 && row != n - 1) {

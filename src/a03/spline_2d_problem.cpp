@@ -477,7 +477,7 @@ Spline2DSolution<double> Solve(const Spline2DProblem &problem, SolverType solver
       int m = problem.m_ + 2;
 
       if (scale) {
-
+        cout << "Scaling problem." << endl;
         for (int row = 0; row < n; ++row) {
           for (int col = 0; col < m; ++col) {
             double factor = 4;
@@ -492,8 +492,7 @@ Spline2DSolution<double> Solve(const Spline2DProblem &problem, SolverType solver
             u(i) = u(i) * factor;
 
             // Temporary solution until I get rid of A completely in the code.
-            A.row(i) *= factor;
-//      cout << factor << endl;
+//            A.row(i) *= factor;
           }
         }
       }
