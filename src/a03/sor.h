@@ -1,6 +1,7 @@
-//
-// Created by andreib on 12/7/18.
-//
+/**
+ * @file sor.h
+ * @brief Serial code for solving 2D spline interpolation using SOR. (Not a generic solver.)
+ */
 
 #ifndef HPSC_SOR_H
 #define HPSC_SOR_H
@@ -16,8 +17,18 @@
 using ESVector = Eigen::SparseVector<double>;
 
 
+void GenerateColoredOrder(int n, int m, vector<int> &order);
+
+
+void GenerateNaturalOrder(int n, int m, vector<int> &order) {
+  for (int i = 0; i < n * m; ++i) {
+    order.push_back(i);
+  }
+}
+
+
 void GetARowUpper(int i, int n, int m, ESVector &rv) {
-  // Procedurally generates a row from A.
+  // Procedurally generates the upper half of a row from A.
   using namespace Eigen;
   rv.setZero();
 
@@ -101,9 +112,6 @@ Eigen::SparseVector<double> GetARowLower(int i, int n, int m) {
       rv.insert(i - m + 2 - 1) = 1;
     }
   }
-
-//  cout << "Returning row: " << i << endl;
-//  cout << rv << endl;
   return rv;
 }
 
@@ -179,10 +187,6 @@ void ForwardSubst(
 )
 {
   using namespace Eigen;
-//  EMatrix A_built = EMatrix::Zero(A.rows(), A.cols());
-  // TODO(andreib): Allow user to specify a coloring-based order, instead of just 1 .. n * m.
-
-//  for (int i = 0; i < n * m; ++i) {
   for (int i : row_indices) {
     int row = i / m;
     int col = i % m;
@@ -208,96 +212,56 @@ void ForwardSubst(
     double solution = (q1(i) - sum) / diag * w;
 //    double solution = (q1(i) - sum_slow) / diag * w;
     (*x)(i) = solution;
-
-//    A_built.row(i) = a_row;
   }
-
-  // TODO(andreib): Remove this code.
-//  if (A.rows() < 50) {
-//    cout << "Demo A rebuilt:" << endl;
-//    cout << A_built << endl;
-//  }
 }
 
-
-std::shared_ptr<EMatrix> SOR(const ESMatrix &_, const Eigen::VectorXd &b, int n, int m) {
+/// Solves a linear system arising from the 2D quadratic spline interpolation problem using SOR.
+/// \warning Not a generic linear solver.
+std::shared_ptr<EMatrix> SOR(const ESMatrix &_,
+                             const Eigen::VectorXd &b,
+                             int n,
+                             int m,
+                             double w,
+                             bool reorder,
+                             int *out_iterations) {
   using namespace Eigen;
   using namespace std;
-
-  // Hacky copies
-//  Eigen::VectorXd b(bo);
-//  ESMatrix A(Ao);
-
   const int kMaxIt = 100;
-  // TODO pass as parameter
-  const double w = 0.8;
-  const bool reorder = false;
-
-  cout << "Starting to compute equation ordering..." << endl;
   vector<int> order;
   order.reserve(n * m);
-  if (reorder) {
-    cout << "REORDERING equations using 4-color coloring." << endl;
-    // TODO simply iterate through q1 computation and forward subst using the coloring-based ordering.
-    //
-    //  R B R     <=> i even
-    //  G Y G     <=> i odd
-    //  R B R     <=> i even
-    //  ...etc.
-    for (int i = 0; i < n; ++i) {
-      for (int j = 0; j < m; ++j) {
-        int idx = i * m + j;
-
-        if (i % 2 == 0 && j % 2 == 0) {
-          // RED
-        }
-        else if(i % 2 == 0 && j % 2 == 1) {
-          // BLUE
-        }
-        else if (i % 2 == 1 && j % 2 == 0) {
-          // GREEN
-        }
-        else {
-          // YELLOW
-        }
-      }
-
-    }
-  }
-  else {
-    cout << "NOT reordering equations using coloring." << endl;
-    for(int i = 0; i < n * m; ++i) {
-      order.push_back(i);
-    }
-  }
-
-//  if (A.rows() < 100) {
-//    cout << A << endl;
-//  }
-  cout << "Computed equation ordering." << endl;
-
 
   // Note: the natural ordering is what we've been doing so far in the previous cases.
   // Note: we need FOUR-COLOR coloring, not red-black. Two colors are not enough. And since we have >2 colors, we need
   // to decide which choice of color assignment to use. We should use the third one.
+  if (reorder) {
+//    cout << "REORDERING equations using 4-color coloring." << endl;
+    GenerateColoredOrder(n, m, order);
+  }
+  else {
+//    cout << "NOT reordering equations using coloring." << endl;
+    GenerateNaturalOrder(n, m, order);
+  }
+
+  // This is the solution we will be iterating on. It is initialized as all-zeros.
   auto x = make_shared<VectorXd>(VectorXd::Zero(n * m));
 
 //  ESMatrix L(A.triangularView<StrictlyLower>());
 //  ESMatrix U(A.triangularView<StrictlyUpper>());
 //  ESMatrix D(A.diagonal().asDiagonal());   // Extract diagonal as vector, and then turn
 
-  // Note we just use A at the beginning (trivial to remove, but I chose to focus on optimizing the main loop, since
-  // that's by far where the algorithms spends most of its time).
 //  VectorXd q0 = (L + D / w) * (*x);
+//  VectorXd q1 = b - (U + (w - 1) / w * D) * (*x);
+
+  // Algorithm initialization logic, WITHOUT using x.
   VectorXd q0(VectorXd::Zero(b.rows()));
   Computeq0(order, n, m, w, x, q0);
-//  VectorXd q1 = b - (U + (w - 1) / w * D) * (*x);
 
   VectorXd q1 = VectorXd::Zero(b.rows());
   Computeq1(order, _, b, n, m, w, x, q1);
   VectorXd r = q1 - q0;
 
-  double kErrNormEps = 1e-12;
+  // Use 10^{-9} as the convergence tolerance, as instructed in the handout.
+  double kErrNormEps = 1e-9;
   double err_norm_0 = r.norm();
   double err_norm = r.norm();
   int iteration = 0;
@@ -317,15 +281,92 @@ std::shared_ptr<EMatrix> SOR(const ESMatrix &_, const Eigen::VectorXd &b, int n,
 
     r = q1 - q0;
     err_norm = r.norm();
-    if (iteration && iteration % 10 == 0) {
-      cout << "[SOR] Iteration " << iteration << " complete. error = " << err_norm << endl;
-    }
+//    if (iteration && iteration % 10 == 0) {
+//      cout << "[SOR] Iteration " << iteration << " complete. error = " << err_norm << endl;
+//    }
   }
-  cout << "[SOR] Done in " << iteration << " its." << endl;
+//  cout << "[SOR] Done in " << iteration << " its." << endl;
 
+  *out_iterations = iteration;
   auto x_mat = make_shared<EMatrix>(*x);
   x_mat->resize(n, m);
   return x_mat;
+}
+
+void GenerateColoredOrder(int n, int m, vector<int> &order) {
+  //  R B R     <=> i even
+  //  G Y G     <=> i odd
+  //  R B R     <=> i even
+  //  ...etc.
+  vector<int> red_idx;
+  red_idx.reserve(n * m / 3);
+  vector<int> blue_idx;
+  blue_idx.reserve(n * m / 3);
+  vector<int> green_idx;
+  green_idx.reserve(n * m / 3);
+  vector<int> yellow_idx;
+  yellow_idx.reserve(n * m / 3);
+  for (int row = 0; row < n; ++row) {
+    for (int col = 0; col < m; ++col) {
+      int i = row * m + col;
+      // Coloring 3
+      if (row % 2 == 0) {
+        if (col % 2 == 0) {
+          red_idx.push_back(i);
+        } else {
+          blue_idx.push_back(i);
+        }
+      } else {
+        if (col % 2 == 0) {
+          green_idx.push_back(i);
+        } else {
+          yellow_idx.push_back(i);
+        }
+      }
+      continue;
+      // Coloring 2
+//        switch(row % 4) {
+//          case 0:
+//            if (col % 2 == 0) {
+//              red_idx.push_back(i);
+//            }
+//            else {
+//              green_idx.push_back(i);
+//            }
+//            break;
+//          case 1:
+//            if (col % 2 == 0) {
+//              yellow_idx.push_back(i);
+//            }
+//            else {
+//              blue_idx.push_back(i);
+//            }
+//            break;
+//          case 2:
+//            if (col % 2 == 0) {
+//              green_idx.push_back(i);
+//            }
+//            else {
+//              red_idx.push_back(i);
+//            }
+//            break;
+//          case 3:
+//            if (col % 2 == 0) {
+//              blue_idx.push_back(i);
+//            }
+//            else {
+//              yellow_idx.push_back(i);
+//            }
+//            break;
+//          default:
+//            throw runtime_error("Math stopped working.");
+//        }
+    }
+  }
+  order.insert(order.end(), red_idx.cbegin(), red_idx.cend());
+  order.insert(order.end(), blue_idx.cbegin(), blue_idx.cend());
+  order.insert(order.end(), green_idx.cbegin(), green_idx.cend());
+  order.insert(order.end(), yellow_idx.cbegin(), yellow_idx.cend());
 }
 
 

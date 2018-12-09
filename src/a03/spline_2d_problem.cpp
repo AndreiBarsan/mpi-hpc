@@ -46,6 +46,7 @@ DEFINE_string(problem_sizes, "30, 62, 126, 254, 510", "A comma-separated list of
 DEFINE_int32(repeat, 1, "The number of times to repeat each solver run, in order to achieve statistical confidence "
                         "when doing timing estimation.");
 DEFINE_bool(dump_result, true, "Whether to dump the solution ouput for visualization.");
+DEFINE_double(sor_omega, -1.0, "Value of omega (w) to use when using SOR. Ignored for other solvers.");
 
 
 // TODO(andreib): Stick Eigen stuff in a precompiled header for faster builds!
@@ -88,6 +89,14 @@ Eigen::ArrayXd GetControlPoints1d(uint32_t n, double a, double b) {
   }
   control_points(n + 1) = knots[n];
   return control_points;
+}
+
+Eigen::ArrayXd GetNodes1d(uint32_t n, double a, double b) {
+  using namespace Eigen;
+  auto knots = ArrayXd::LinSpaced(n + 1, a, b);
+  assert(knots[0] == a);
+  assert(knots[n] == b);
+  return knots;
 }
 
 /// Returns a [sz x sz] coefficient matrix used to build the S and T matrices.
@@ -255,12 +264,14 @@ SolverTiming Aggregate(const std::vector<SolverTiming> &timings) {
 /// Contains the errors of a particular solution to a spline problem.
 template<typename T>
 struct Spline2DErrors {
-  Spline2DErrors(double max_over_control_points, double max_over_dense_points)
+  Spline2DErrors(double max_over_control_points, double max_over_dense_points, double max_over_nodes)
     : max_over_control_points(max_over_control_points),
-      max_over_dense_points(max_over_dense_points) {}
+      max_over_dense_points(max_over_dense_points),
+      max_over_nodes(max_over_nodes) {}
 
   const double max_over_control_points;
   const double max_over_dense_points;
+  const double max_over_nodes;
 };
 
 template <typename T>
@@ -290,27 +301,33 @@ class Spline2DSolution {
   }
 
   Spline2DErrors<T> ComputeErrorsAndValidate() const {
-    double kMaxControlPointError = 1e-8;
+    double kMaxControlPointError = 1e-6;
     const Spline2DProblem &problem = this->problem_;
     auto cpoints = problem.GetControlPoints();
-    double max_err = GetMaxError(cpoints, problem, *this);
+    double max_err_control = GetMaxError(cpoints, problem, *this);
     // Note that these are EXACTLY the points we wish to fit to, so the error should be zero.
-    if (max_err > kMaxControlPointError) {
+    if (max_err_control > kMaxControlPointError) {
       throw runtime_error(Format("Found unusually large error in a control point. Maximum error over control points "
-                                 "was %.10f, larger than the threshold of %.10f.", max_err, kMaxControlPointError));
+                                 "was %.10f, larger than the threshold of %.10f.", max_err_control, kMaxControlPointError));
     }
     auto denser_grid = MeshGrid(
         // Fixed size grid for all n, m, as indicated in the handout.
-        GetControlPoints1d(38, problem.a_x_, problem.b_x_),
-        GetControlPoints1d(38, problem.a_y_, problem.b_y_)
+        GetNodes1d(38, problem.a_x_, problem.b_x_),
+        GetNodes1d(38, problem.a_y_, problem.b_y_)
     );
     double max_err_dense = GetMaxError(denser_grid, problem, *this);
-    if (max_err_dense - max_err < -kMaxControlPointError) {
+    if (max_err_dense - max_err_control < -kMaxControlPointError) {
       throw runtime_error(Format("The max error on the dense grid should NOT be smaller than the max error on the "
                                  "control points, but got dense max error %.10f < control point max error %.10f!",
-                                 max_err_dense, max_err));
+                                 max_err_dense, max_err_control));
     }
-    return Spline2DErrors<T>(max_err, max_err_dense);
+
+    auto node_grid = MeshGrid(
+        GetNodes1d(problem.n_, problem.a_x_, problem.b_x_),
+        GetNodes1d(problem.m_, problem.a_y_, problem.b_y_)
+    );
+    double max_err_nodes = GetMaxError(node_grid, problem, *this);
+    return Spline2DErrors<T>(max_err_control, max_err_dense, max_err_nodes);
   }
 
   const Eigen::MatrixXd control_vals_;
@@ -472,12 +489,13 @@ Spline2DSolution<double> Solve(const Spline2DProblem &problem, SolverType solver
       ESMatrix A = problem.GetA();
       EMatrix u = problem.u;
 
-      bool scale = true;
       int n = problem.n_ + 2;
       int m = problem.m_ + 2;
+      bool scale = true;
 
       if (scale) {
-        cout << "Scaling problem." << endl;
+        // Ensures the RHS is scaled properly when doing SOR.
+        cout << "Scaling problem for SOR." << endl;
         for (int row = 0; row < n; ++row) {
           for (int col = 0; col < m; ++col) {
             double factor = 4;
@@ -490,16 +508,46 @@ Spline2DSolution<double> Solve(const Spline2DProblem &problem, SolverType solver
 
             int i = row * m + col;
             u(i) = u(i) * factor;
-
-            // Temporary solution until I get rid of A completely in the code.
-//            A.row(i) *= factor;
           }
         }
       }
+      double omega = FLAGS_sor_omega;
+      if (omega < 0.0) {
+        throw runtime_error("Please specify the value of omega when running SOR.");
+      }
 
-      auto sol = SOR(A, u, problem.n_ + 2, problem.m_ + 2);
+      int nit_natural = -1, nit_color = -1;
+      auto sol_natural = SOR(A, u, problem.n_ + 2, problem.m_ + 2, omega, false, &nit_natural);
       stopwatch.Record("end");
-      return Spline2DSolution<double>(problem.u, *sol, problem);
+
+      auto sol_reorder = SOR(A, u, problem.n_ + 2, problem.m_ + 2, omega, true, &nit_color);
+      const double coef_check_eps = 1e-6;
+      double delta_norm = (*sol_natural - *sol_reorder).norm();
+//      cout << "Norm: " << delta_norm << endl;
+        if (! sol_natural->isApprox(*sol_reorder, coef_check_eps)) {
+        throw runtime_error("Natural and 4c-reordered system solution differ!");
+      }
+
+      Spline2DSolution<double> sol(problem.u, *sol_reorder, problem);
+      auto errs = sol.ComputeErrorsAndValidate();
+
+      Spline2DSolution<double> sol_nat(problem.u, *sol_natural, problem);
+      auto nat_errs = sol.ComputeErrorsAndValidate();
+
+      if (fabs(errs.max_over_dense_points - nat_errs.max_over_dense_points) > 1e-8) {
+        throw runtime_error("Dense error too large when changing order.");
+      }
+      if (fabs(errs.max_over_control_points - nat_errs.max_over_control_points) > 1e-8) {
+        throw runtime_error("Control point error too large when changing order.");
+      }
+      if (fabs(errs.max_over_nodes - nat_errs.max_over_nodes) > 1e-8) {
+        throw runtime_error("Node error too large when changing order.");
+      }
+
+      cout << "[SOR] Summary:" << problem.n_ << ", " << problem.m_ << " & " << omega << " & " << nit_natural
+           << " & " << nit_color << " & " << errs.max_over_nodes << " & " << errs.max_over_dense_points << "\t\\\\" <<
+           endl;
+      return sol;
     }
     default:
       throw runtime_error(Format("Unknown solver type requested: %d", solver_type));
@@ -518,7 +566,7 @@ void CheckSolution(
   Eigen::MatrixXd delta = naive_solution.coefs_ - smart_solution.coefs_;
   delta.resize(problem.S.rows(), problem.S.cols());
   double delta_norm = delta.norm();
-  const double kDeltaNormEps = 1e-8;
+  const double kDeltaNormEps = 1e-4;
   if (delta_norm > kDeltaNormEps) {
     throw runtime_error(Format("Computed solution coefficients from method [%s] differs from the reference naive "
                                "solution by [%.10lf], more than the threshold epsilon of [%.10lf].",
@@ -594,7 +642,6 @@ int Spline2DExperiment() {
       MPI_Barrier(MPI_COMM_WORLD);
       MPIStopwatch stopwatch; stopwatch.Start();
       auto smart_solution = Solve(problem, solver_type, stopwatch);
-//      stopwatch.Record("end");
       timings.push_back(stopwatch.GetAllMaxTimesUs());
       full_timings_us.push_back(stopwatch.GetMaxTotalTimeUs().count());
 
@@ -627,11 +674,11 @@ int Spline2DExperiment() {
       }
 
       MASTER {
-        // TODO(andreib): Code for generating LaTeX from this!
         double sum_ms = 0.0;
         double sum_sq_ms = 0.0;
-        const int warmup = 1;
-        const int cooldown = 1;
+        // Discard first and last measurement(s), but only we have enough measurements to begin with!
+        const unsigned int warmup = (full_timings_us.size() > 2) ? 1 : 0;
+        const unsigned int cooldown = (full_timings_us.size() > 2) ? 1 : 0;
         map<string, double> sum_map_ms;
         map<string, double> sum_map_std;
         map<string, double> sum_map_sq_ms;
@@ -647,7 +694,7 @@ int Spline2DExperiment() {
             sum_map_sq_ms[p.first] += time_ms * time_ms;
           }
         }
-        int count = (full_timings_us.size() - warmup - cooldown);
+        unsigned long count = (full_timings_us.size() - warmup - cooldown);
         for(const auto& p : sum_map_ms) {
           sum_map_ms[p.first] /= count;
           double mean = sum_map_ms[p.first];
@@ -673,7 +720,7 @@ int Spline2DExperiment() {
           Save(smart_solution, FLAGS_out_dir);
           cout << "Solution saved as JSON (but not checked yet).\n";
         }
-        if (size < 200 && solver_type != SolverType::kSerialSOR) {
+        if (size < 200) {
           cout << "Computing solution using slow method and checking results...\n";
           CheckSolution(solver_name, problem, smart_solution);
           cout << "Solver: " << solver_name << " coefficient check vs. reference solution OK. Checking max error.\n";

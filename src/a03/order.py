@@ -102,7 +102,7 @@ def build_perm_4color(rows, cols):
                     # green_idx.append((i, gi))
                     green_idx.append(i)
                     gi += 1
-            elif row % 3 == 1:
+            elif row % 4 == 1:
                 if col % 2 == 0:
                     # yellow_idx.append((i, yi))
                     yellow_idx.append(i)
@@ -111,7 +111,7 @@ def build_perm_4color(rows, cols):
                     # black_idx.append((i, bi))
                     black_idx.append(i)
                     bi = bi + 1
-            elif row % 3 == 2:
+            elif row % 4 == 2:
                 if col % 2 == 0:
                     # green_idx.append((i, gi))
                     green_idx.append(i)
