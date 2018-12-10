@@ -41,17 +41,19 @@ n,m,w,nit_nat,nit_4c,err_nodes,err_38
     string_io = StringIO(data.replace('&', ','))
     df = pd.read_csv(string_io, sep=",")
 
-    df = df[df['n'] == 64]
+    df = df[df['n'] == 256]
     print(df['nit_nat'])
-    ax = df.plot('w', 'nit_nat', label="$n_{it}$ (natural order)")
-    ax = df.plot('w', 'nit_4c', ax=ax, label="$n_{it}$ (four-color order)")
+    ax = df.plot('w', 'nit_nat', marker='x', label="$n_{it}$ (natural order)")
+    ax = df.plot('w', 'nit_4c', marker='x', ax=ax, label="$n_{it}$ (four-color order)")
     ax.set(
-        xlabel='$\omega$', ylabel='$n_{it}$'
+        xlabel='$\omega$', ylabel='Iteration count ($n_{it}$)',
+        ylim=(0, 50)
     )
     plt.tight_layout()
     out = '../../results/plots/a03-sor-256'
-    # plt.savefig(out + '.png')
-    # plt.savefig(out + '.eps')
+    plt.savefig(out + '.png')
+    plt.savefig(out + '.eps')
+    plt.grid()
     plt.show()
 
     print(df)

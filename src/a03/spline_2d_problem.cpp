@@ -30,7 +30,7 @@
 // N is the first dimension, M is the second dimension.
 
 // Feedback from second assignment's coding part:
-//  - not much, but just make sure to account for sparsity in regular operations when computing theoretical
+//  - just make sure to account for sparsity in regular operations when computing theoretical
 // complexities; one major mistake was you accounted for sparse/triangular matrices when doing e.g.,
 // LU/fwd/back-subst, but NOT when doing matrix-matrix and matrix-vector multiplication, which you should have!
 
@@ -49,11 +49,14 @@ DEFINE_bool(dump_result, true, "Whether to dump the solution ouput for visualiza
 DEFINE_double(sor_omega, -1.0, "Value of omega (w) to use when using SOR. Ignored for other solvers.");
 
 
-// TODO(andreib): Stick Eigen stuff in a precompiled header for faster builds!
+// TODO-LOW(andreib): Stick Eigen stuff in a precompiled header for faster builds!
+// TODO-LOW(andreib): Set up include-what-you-use to eliminate useless '#include's.
 
 using namespace std;
 
-/// Represents a 2D scalar-valued function which we use in our 2D interpolation problems.
+/**
+ * @brief Represents a 2D scalar-valued function which we use in our 2D interpolation problems.
+ */
 using Scalar2DFunction = function<double(double, double)>;
 
 /**
