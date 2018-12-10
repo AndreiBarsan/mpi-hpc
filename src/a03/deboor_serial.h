@@ -49,8 +49,8 @@ Eigen::VectorXd DeBoorDecomposition(const ESMatrix &A,
     VectorXd g_i = G.block(i, 0, 1, m).transpose();
 //    VectorXd g_i = G.block(i, 0, 1, m).transpose();
 //    cout << g_i.rows() << " x " << g_i.cols() << endl;
-// TODO remove profanity
-// WHY THE flip DOES THIS WORK both WITH AND WITHOUT TRANSPOSE BUT PRODUCES DIFFERENT RESULTS?
+    // TODO-LOW(andreib): Why does this line work in Eigen with and without the transpose, but produce different
+    //  results? Shouldn't the row-reference on the left make Eigen figure out how things fit together?
     D.row(i) = B_solver.solve(g_i).transpose();
   }
 //  cout << "Done first serial solver loop." << endl;

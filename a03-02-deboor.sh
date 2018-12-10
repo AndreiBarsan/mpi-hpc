@@ -26,7 +26,7 @@ for METHOD in ${METHODS[@]}; do
         mpirun -np "$NODE_COUNT" -machinefile config/local-machine.txt      \
             --verbose --display-map --tag-output --timestamp-output         \
             cmake-build-debug/spline_2d_problem                             \
-            --problem_sizes=30,62,126,254,510,1022                          \
+            --problem_sizes=30,62,126,254,510                          \
             --out_dir=$(pwd)/results/spline_2d_output --method "$METHOD"    \
             --repeat 32 --dump_result=false
 
@@ -34,6 +34,6 @@ for METHOD in ${METHODS[@]}; do
     done
 done
 
-# TODO(andreib): Try the -xterm option on Linux!
+# TODO-LOW(andreib): Try the -xterm option on Linux!
 
 

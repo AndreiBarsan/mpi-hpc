@@ -29,7 +29,6 @@ void GenerateNaturalOrder(int n, int m, vector<int> &order) {
 
 void GetARowUpper(int i, int n, int m, ESVector &rv) {
   // Procedurally generates the upper half of a row from A.
-  using namespace Eigen;
   rv.setZero();
 
   int row = i / m;
@@ -72,7 +71,6 @@ void GetARowUpper(int i, int n, int m, ESVector &rv) {
 
 Eigen::SparseVector<double> GetARowLower(int i, int n, int m) {
   // Procedurally generates a lower half of a row from A.
-  using namespace Eigen;
   Eigen::SparseVector<double> rv(n * m);
 
   int row = i / m;
@@ -115,16 +113,15 @@ Eigen::SparseVector<double> GetARowLower(int i, int n, int m) {
   return rv;
 }
 
-
 void Computeq1(
     const std::vector<int> &row_indices,
     const ESMatrix &_,          // used to A, and only for debugging, now unused
     const Eigen::VectorXd &b,
-               int n,
-               int m,
-               double w,
-               const std::shared_ptr<Eigen::VectorXd> &x,
-               Eigen::VectorXd &q1
+    int n,
+    int m,
+    double w,
+    const std::shared_ptr<Eigen::VectorXd> &x,
+    Eigen::VectorXd &q1
 ) {
   Eigen::SparseVector<double> a_row(n * m);
   for(int i : row_indices) {
@@ -139,10 +136,7 @@ void Computeq1(
 //      assert(res.rows() == 1 && res.cols() == 1);
 //      double val = res(0, 0);
 
-//      cout << val << ", " << val_hacky << endl;
-
     q1(i) = b(i) - val;
-//    q1(i) = b(i) - val;
   }
 }
 

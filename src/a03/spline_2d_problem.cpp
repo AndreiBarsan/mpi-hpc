@@ -50,9 +50,6 @@ DEFINE_double(sor_omega, -1.0, "Value of omega (w) to use when using SOR. Ignore
 
 
 // TODO(andreib): Stick Eigen stuff in a precompiled header for faster builds!
-// TODO(andreib): Maybe show some of the heatmaps in the assignment report.
-
-// TODO(andreib): Experiment with the second function (beta) in problem 2.
 
 using namespace std;
 
@@ -149,14 +146,6 @@ class Spline2DProblem {
 
   }
 
-//  ESMatrix GetS() const {
-//    return S;
-//  }
-
-//  ESMatrix GetT() const {
-//    return GetCoefMatrix(m_);
-//  }
-
   Eigen::MatrixX2d GetControlPoints() const {
     Eigen::ArrayXd x_coord = GetControlPoints1d(n_, a_x_, b_x_);
     Eigen::ArrayXd y_coord = GetControlPoints1d(m_, a_y_, b_y_);
@@ -188,8 +177,8 @@ class Spline2DProblem {
   const double step_size_y_;
 };
 
-// TODO(andreib): Make timing classes const while still allowing std::accumulate!
-/// Contains the timing information collected after the run of a solver.
+// TODO-LOW(andreib): Make timing classes const while still allowing std::accumulate!
+/// Contains the timing information collected after the run of a solver. Unused due to not enough time to do this...
 struct SolverTiming {
   explicit SolverTiming(const Duration &total_duration) : total_duration_(total_duration) {}
 
@@ -451,7 +440,7 @@ Spline2DSolution<double> SolveNaive(const Spline2DProblem &problem) {
 }
 
 Spline2DSolution<double> SolveSerialDeBoor(const Spline2DProblem &problem, MPIStopwatch &stopwatch) {
-  // TODO(andreib): Returning by value and also resizing is VERY slow. Fix that.
+  // TODO-LOW(andreib): Returning by value and also resizing is a little slow. Fix that.
   Eigen::MatrixXd deboor_x = DeBoorDecomposition(problem.S, problem.T, problem.u, stopwatch);
   deboor_x.resize(problem.n_ + 2, problem.m_ + 2);
   return Spline2DSolution<double>(problem.u, deboor_x, problem);
@@ -465,8 +454,6 @@ Spline2DSolution<double> Solve(const Spline2DProblem &problem, SolverType solver
       return SolveSerialDeBoor(problem, stopwatch);
     case kParallelDeBoorA: {
       auto sol = DeBoorParallelA(problem.S, problem.T, problem.u, stopwatch);
-      // XXX: ensure this makes sense---the thing we want to avoid is timing lots of expensive copies which we can
-      //      trivially eliminate in the future.
       stopwatch.Record("end");
       return Spline2DSolution<double>(problem.u, *sol, problem);
     }

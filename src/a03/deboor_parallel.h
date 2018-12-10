@@ -53,6 +53,7 @@ std::shared_ptr<Eigen::MatrixXd> DeBoorParallelA(const ESMatrix &A,
   int local_end = (local_id + 1) * partition_rows;
   for (int i = local_start; i < local_end; ++i) {
     VectorXd g_i = rhs_matrix.row(i);
+    // B is m x m, so each equation has m unknowns, and we solve n / p of them.
     local_D.row(i - local_start) = B_solver.solve(g_i).transpose();
   }
   stopwatch.Record("first_stage");
@@ -89,8 +90,7 @@ std::shared_ptr<Eigen::MatrixXd> DeBoorParallelB(const ESMatrix &A,
                                                  const ESMatrix &B,
                                                  const Eigen::VectorXd &u,
                                                  MPIStopwatch &stopwatch) {
-  // TODO(andreib): Don't assume each node knows A!
-  // TODO(andreib): Eliminate using statements.
+  // TODO-LOW(andreib): Eliminate using statements.
   using namespace Eigen;
   using namespace std;
   MPI_SETUP;
@@ -113,10 +113,12 @@ std::shared_ptr<Eigen::MatrixXd> DeBoorParallelB(const ESMatrix &A,
   MatrixXd rhs_matrix(u);
   rhs_matrix.resize(n, m);
   MatrixXd local_D = MatrixXd::Zero(partition_rows, m);
+  // n loops in total, each has m unknowns
   int local_start = local_id * partition_rows;
   int local_end = (local_id + 1) * partition_rows;
   for (int i = local_start; i < local_end; ++i) {
     VectorXd g_i = rhs_matrix.row(i);
+    // d has n rows and m columns
     local_D.row(i - local_start) = B_solver.solve(g_i).transpose();
   }
   stopwatch.Record("first_stage");
