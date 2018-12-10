@@ -14,6 +14,7 @@ def main():
     root = sys.argv[1]
     print("Reading timing data from root dir: {}".format(root))
     methods = ['parallel-deboor-a', 'parallel-deboor-b']
+    # methods = ['serial-deboor']
     nps = [1, 2, 4, 8, 16]
 
     files = [os.path.join(root, f) for f in os.listdir(root) if 'timing-' in f]

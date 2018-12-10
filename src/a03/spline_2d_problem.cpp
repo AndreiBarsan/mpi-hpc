@@ -157,6 +157,9 @@ class Spline2DProblem {
   string GetFullName() const {
     return Format("problem-%s-%04d", name_.c_str(), n_);
   }
+  string GetShortName() const {
+    return name_;
+  }
 
  public:
   const string name_;
@@ -598,8 +601,7 @@ int Spline2DExperiment() {
   vector<int> problem_sizes = ParseCommaSeparatedInts(FLAGS_problem_sizes);
   for (const int& size : problem_sizes) {
 //    for (const auto& problem : {BuildFirstProblem(size, size),
-//                                BuildSecondProblem(size, size),
-//                                BuildThirdProblem(size, size)}) {
+//                                BuildSecondProblem(size, size)}) {
     for (const auto& problem : {BuildSecondProblem(size, size)}) {
       MASTER { cout << "Will be solving problem: " << problem.GetFullName() << endl; }
 
@@ -634,6 +636,7 @@ int Spline2DExperiment() {
 //            }
           }
         }
+        timing_file << "err_nodes,err_dense,problem";
         timing_file << "\n";
         wrote_header = true;
       }
@@ -689,6 +692,11 @@ int Spline2DExperiment() {
                  << sum_map_std[p.first] << "ms" << endl;
           }
         }
+
+        // hacky code
+        auto e = smart_solution.ComputeErrorsAndValidate();
+
+        timing_file << e.max_over_nodes << "," << e.max_over_dense_points << "," << problem.GetShortName();
         timing_file << endl;
         if (IsParallelDeBoor(solver_type)) {
           CheckWithSerialDeBoor(solver_name, problem, smart_solution);
