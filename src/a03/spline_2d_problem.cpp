@@ -50,19 +50,9 @@ DEFINE_double(sor_omega, -1.0, "Value of omega (w) to use when using SOR. Ignore
 
 
 // TODO(andreib): Stick Eigen stuff in a precompiled header for faster builds!
-// TODO(andreib): Automate LaTeX table generation for an experiment.
 // TODO(andreib): Maybe show some of the heatmaps in the assignment report.
-// TODO(andreib): Ensure you use -O3 etc. when doing timing.
-// TODO(andreib): Check if the (minor) banding artifacts in solution of problem beta are due to a minor offset bug
-//                in your solution class.
 
-
-// TODO(andreib): Group messages together as much as possible.
 // TODO(andreib): Experiment with the second function (beta) in problem 2.
-// TODO(andreib): Assert errors produced by parallel method are about the same as sequential ones in Q1.
-// TODO(andreib): Measure the parallel execution time taken for the solution of the bi-quadratic spline interpolation
-// system with the two alternatives. (Do not include the time to calculate the errors.)
-// TODO(andreib): When measuring time, measure in chunks so you can see which parts of the method are the most intense.
 
 using namespace std;
 

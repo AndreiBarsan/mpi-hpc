@@ -119,14 +119,10 @@ std::shared_ptr<Eigen::MatrixXd> DeBoorParallelB(const ESMatrix &A,
     VectorXd g_i = rhs_matrix.row(i);
     local_D.row(i - local_start) = B_solver.solve(g_i).transpose();
   }
-//  cout << "Done first parallel solver loop." << endl;
   stopwatch.Record("first_stage");
   // Nothing to do in the transpose stage, since it does not exist.
   stopwatch.Record("transpose_stage");
 
-  // TODO(andreib): SolveParallel implementation of PP2 assumes the full A is on master and splits it up to everyone.
-  // You should update the implementation to account for the fact that A is already distributed row-wise in this
-  // problem.
   ::BandMatrix<double> A_custom = ToTridiagonalMatrix(A);
   ::Matrix<double> local_D_custom = ToMatrix(local_D);
   ::Matrix<double> distributed_solution = ::SolveParallel(A_custom, local_D_custom, true);
