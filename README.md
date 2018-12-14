@@ -50,7 +50,7 @@ cd src/a01
 python analysis.py                      # Run the analysis script (may need to modify what directory it reads from).
 ```
 
-### Assignment 1
+#### Assignment 1
 
 Use `a01-04-local.sh` to run Problem 4 locally.
 
