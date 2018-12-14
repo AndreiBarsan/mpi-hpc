@@ -1,40 +1,43 @@
-# UofT CSC2306F: High-Performance Scientific Computing Assignments, Fall 2018
+# Distributed Solvers for Large Systems Using MPI
 
 ## Overview
 
-These assignments consist mostly of MPI code implemented in C++, plus some Python used to analyze the experimental
-results and create the plots.
+These assignments consist mostly of MPI code implemented in C++, plus some
+Python used to analyze the experimental results and create the plots. I wrote
+this code for coursework during my PhD, but I removed the course code to make
+it harder to Google based on the course's name alone. ;)
 
 ## Getting Started
 
-The code requires Open MPI and CMake (3.5, so old CMakes are OK. The most recent is 3.13.) to be installed, as well
-as a C++14-compatible compiler (the g++ on UofT's CDF is OK). Several C++14
-features are used, such as `make_shared<T[]>`, but older compilers should still
-support it.
+The code requires Open MPI, CMake 3.5 (not super new), gflags, and Eigen. The
+to be installed, as well as a C++14-compatible compiler
+(the g++ on UofT's CDF is OK). Several C++14 features are used, such as
+`make_shared<T[]>`, but slightly older compilers should still support it.
 
 
 ### Dependencies
 
  - `Open MPI` for the bread and butter for distributed multiprocessing.
- - `gflags`  for clean declarative argument parsing. (Nice way to specify flags for your program.)
+ - `gflags` for clean declarative argument parsing.
 ```bash
 git clone https://github.com/gflags/gflags && cd gflags && mkdir build
 cd build && cmake -DEXPORT_BUILD_DIR=ON .. && make -j4
 ```
+ - Eigen 3 is *required* for Assignment 3, but optional for the previous two!
+   A reasonably new version can be installed on a Debian-like distribution by
+   running `sudo apt install libeigen3-dev`. Note that Eigen3 is a header-only
+   library, so it doesn't need to be compiled separately or linked, just included. 
  - (Optional) Python 3 for analyzing the data and producing the plots. The Python package dependencies are
  specified in the `requirements.txt` file, which can be loaded easily into any virtual or Anaconda environment.
  - (Optional) For Assignment 2, Eigen 3 can enable additional checks by comparing the results produced by the custom
  solver with those produced by an industry-standard solver provided by Eigen. 
- - Eigen 3 is *required* for Assignment 3!  A reasonably new version can be
-   installed on a Debian-like distribution by running `sudo apt install
-   libeigen3-dev`. Note that Eigen3 is a header-only library, so it doesn't
-   need to be compiled per se, or linked, just included. 
 
 
 ### Running the Code
 
-To build the code and run some of the Assignment 01 experiments, simply use the `a01-local.sh` script.
-This runs MPI locally. For best results, use a computing cluster like U of T's CDF.
+To build the code and run some of the Assignment 01 experiments, simply use the
+`a01-local.sh` script.  This runs MPI locally. For best results, use
+a computing cluster like U of T's CDF.
 
 A possible sequence of actions could be:
 

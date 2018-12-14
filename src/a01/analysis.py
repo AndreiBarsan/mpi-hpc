@@ -1,4 +1,4 @@
-"""Analyzes the experiment data from CSC2306 Assignment 01."""
+"""Analyzes the experiment data from the Assignment 1 experiments."""
 
 import os
 import re
