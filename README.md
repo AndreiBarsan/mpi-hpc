@@ -4,8 +4,7 @@
 
 These assignments consist mostly of MPI code implemented in C++, plus some
 Python used to analyze the experimental results and create the plots. I wrote
-this code for coursework during my PhD, but I removed the course code to make
-it harder to Google based on the course's name alone. ;)
+this code for coursework during my PhD.
 
 ## Getting Started
 
